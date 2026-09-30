@@ -3,6 +3,7 @@ import argparse
 import json
 import os
 import queue
+import signal
 import subprocess
 import sys
 import threading
@@ -617,6 +618,7 @@ class Handler(BaseHTTPRequestHandler):
 # ---- self-update: this checkout is a git clone; "Update" = git pull + restart this same process ----
 
 _httpd_ref = {"server": None}
+_runner_ref = {"runner": None}
 
 
 def _git(*args, timeout=30):
@@ -662,7 +664,18 @@ def _restart_self():
     """Re-exec this same process from scratch (same argv), now running the just-pulled code.
     Must close the listening socket first — os.execv keeps file descriptors open across exec, so
     the freshly re-exec'd server.py would otherwise fail to bind the same port (still held open
-    by this, technically-still-alive-until-exec-completes process)."""
+    by this, technically-still-alive-until-exec-completes process). Must also stop the runner
+    (kills its adb logcat/screenrecord children) for the same reason: os.execv doesn't unwind the
+    stack or run any `finally` block, so anything spawned via subprocess.Popen survives the exec
+    as an orphan — confirmed on-device: 45 stray `adb logcat` processes piled up from repeated
+    restarts before this was added, one leaked set per restart, still holding the USB connection
+    open each time long after the server that spawned them was gone."""
+    runner = _runner_ref["runner"]
+    if runner is not None:
+        try:
+            runner.stop()
+        except Exception:
+            pass
     httpd = _httpd_ref["server"]
     if httpd is not None:
         try:
@@ -806,6 +819,17 @@ def main():
         clear_first=not args.no_clear,
     )
     runner.start()
+    _runner_ref["runner"] = runner
+
+    # A plain `kill <pid>` (SIGTERM, the default) has no handler in Python by default -> the
+    # process just dies immediately, skipping every `finally` block below, including runner.stop().
+    # That's exactly how the 45-orphaned-adb-processes situation above happened: someone restarts
+    # the server this way, the old process's adb logcat/screenrecord children get left running,
+    # every single time. SIGINT (Ctrl+C) already raises KeyboardInterrupt on its own; make SIGTERM
+    # do the same so both paths hit the same clean shutdown.
+    def _on_sigterm(signum, frame):
+        raise KeyboardInterrupt()
+    signal.signal(signal.SIGTERM, _on_sigterm)
 
     httpd = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     _httpd_ref["server"] = httpd
