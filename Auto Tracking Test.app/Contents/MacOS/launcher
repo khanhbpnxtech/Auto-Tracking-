@@ -1,0 +1,49 @@
+#!/bin/bash
+# Auto Tracking Test — launcher: mở dashboard đang chạy, hoặc tự chạy server nếu chưa có,
+# rồi mở trình duyệt. Xem README.md mục 0 để cài Python 3 / adb / ffmpeg lần đầu trên máy mới.
+set -u
+
+# Homebrew không nằm trong PATH mặc định khi app được mở từ Finder (double-click) — chỉ có khi
+# mở từ Terminal (Terminal load .zshrc/.bash_profile, Finder thì không). Thêm cả 2 đường dẫn
+# Homebrew hay dùng (Apple Silicon và Intel) để tìm được adb/ffmpeg/python3 cài qua brew.
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+
+# .app này phải nằm ngay trong thư mục tool (cạnh server.py) — đi lên 3 cấp từ
+# Contents/MacOS/launcher là ra thư mục đó.
+APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+SERVER="$APP_DIR/server.py"
+PORT=8765
+LOG="/tmp/auto-tracking-test.log"
+
+notify() {
+  /usr/bin/osascript -e "display dialog \"$1\" buttons {\"OK\"} with title \"Auto Tracking Test\" with icon caution" >/dev/null 2>&1
+}
+
+if [ ! -f "$SERVER" ]; then
+  notify "Không tìm thấy server.py cạnh app này (đang tìm ở: $APP_DIR).\n\nApp này phải nằm ngay trong thư mục tool đã git clone (cùng chỗ với server.py, README.md...) — đừng copy app ra ngoài một mình."
+  exit 1
+fi
+
+for cmd in python3 adb; do
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    notify "Thiếu lệnh '$cmd' trên máy này.\n\nXem README.md mục 0 (Cài đặt) để cài — cần Python 3 và Android platform-tools (adb), cài qua Homebrew."
+    exit 1
+  fi
+done
+
+if ! /usr/sbin/lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+  cd "$APP_DIR" || exit 1
+  nohup python3 server.py >"$LOG" 2>&1 &
+  disown
+  # Chờ server thật sự lên (bind port) trước khi mở trình duyệt, tối đa ~6s.
+  for _ in $(seq 1 20); do
+    /usr/sbin/lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1 && break
+    sleep 0.3
+  done
+  if ! /usr/sbin/lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+    notify "Server không khởi động được. Xem log: $LOG"
+    exit 1
+  fi
+fi
+
+open "http://127.0.0.1:$PORT/"

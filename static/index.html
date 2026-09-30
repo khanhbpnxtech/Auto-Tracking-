@@ -1,0 +1,1717 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>Auto Tracking Test — Realtime</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #0f172a;
+    --panel: #1e293b;
+    --border: #334155;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --match: #22c55e;
+    --partial: #eab308;
+    --unknown: #ef4444;
+    --accent: #38bdf8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, "Segoe UI", Arial, sans-serif;
+    background: var(--bg); color: var(--text);
+  }
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 20px; background: var(--panel); border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 6;
+  }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  #status { font-size: 12px; color: var(--muted); }
+  #status.connected { color: var(--match); }
+  #status.error { color: var(--unknown); }
+  #device-status.connected { color: var(--match); }
+  #device-status.waiting, #device-status.ambiguous { color: var(--partial); }
+  #device-status.no_adb { color: var(--unknown); }
+
+  .tabbar {
+    display: flex; gap: 4px; padding: 10px 20px 0; background: var(--bg);
+    border-bottom: 1px solid var(--border); position: sticky; top: 53px; z-index: 5;
+  }
+  .tab-btn {
+    background: transparent; color: var(--muted); border: 1px solid transparent;
+    border-bottom: none; border-radius: 8px 8px 0 0; padding: 9px 16px; font-size: 13px;
+    font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active {
+    color: var(--text); background: var(--panel); border-color: var(--border);
+    position: relative; top: 1px;
+  }
+  .tab-badge {
+    background: #334155; color: var(--text); border-radius: 10px; padding: 1px 8px;
+    font-size: 11px; font-weight: 700;
+  }
+  .tab-btn.active .tab-badge { background: var(--accent); color: #0f172a; }
+
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  .summary { display: flex; gap: 10px; padding: 12px 20px; flex-wrap: wrap; }
+  .stat {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 14px; min-width: 90px; text-align: center;
+  }
+  .stat .n { font-size: 20px; font-weight: 700; }
+  .stat .l { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .stat.match .n { color: var(--match); }
+  .stat.partial .n { color: var(--partial); }
+  .stat.unknown .n { color: var(--unknown); }
+
+  .toolbar { display: flex; gap: 10px; padding: 0 20px 12px; align-items: center; flex-wrap: wrap; }
+  .toolbar button, .toolbar select, .toolbar input {
+    background: var(--panel); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 6px 10px; font-size: 12px;
+  }
+  .toolbar button { cursor: pointer; }
+  .toolbar button:hover { border-color: #64748b; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  thead th {
+    text-align: left; padding: 8px 10px; background: var(--panel);
+    border-bottom: 1px solid var(--border); position: sticky; top: 100px;
+    color: var(--muted); font-weight: 600; z-index: 4;
+  }
+  tbody td { padding: 7px 10px; border-bottom: 1px solid #1f2937; vertical-align: top; }
+  tbody tr:hover { background: #16213a; }
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700;
+  }
+  .badge.MATCH { background: rgba(34,197,94,.15); color: var(--match); }
+  .badge.PARTIAL { background: rgba(234,179,8,.15); color: var(--partial); }
+  .badge.UNKNOWN { background: rgba(239,68,68,.15); color: var(--unknown); }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .muted { color: var(--muted); }
+  .kv { font-size: 11.5px; }
+  .kv b { color: #cbd5e1; }
+  tr.row-MATCH { border-left: 3px solid var(--match); }
+  tr.row-PARTIAL { border-left: 3px solid var(--partial); }
+  tr.row-UNKNOWN { border-left: 3px solid var(--unknown); }
+  .empty { padding: 40px 20px; color: var(--muted); text-align: center; }
+  .pill {
+    display:inline-block; padding: 3px 9px; border-radius: 6px; background:#334155;
+    font-size: 14px; line-height: 1.5; margin: 2px 4px 2px 0;
+  }
+  .bundle-cell .pill { font-weight: 500; }
+  .kv .pill { font-size: 11.5px; padding: 1px 6px; }
+  .bundle-json {
+    background: #0b1220; border: 1px solid var(--border); border-radius: 8px;
+    padding: 14px 16px; font-size: 15px; line-height: 1.6; margin: 0; white-space: pre;
+    overflow-x: auto; max-width: 720px; min-width: 320px;
+  }
+  .pkg { font-size: 11px; color: var(--muted); }
+
+  .error-badge {
+    display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700;
+  }
+  .error-badge.E { background: rgba(239,68,68,.15); color: var(--unknown); }
+  .error-badge.F { background: rgba(239,68,68,.3); color: #fecaca; }
+  .error-msg {
+    background: #0b1220; border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px; font-size: 12.5px; line-height: 1.6; margin: 0; white-space: pre-wrap;
+    word-break: break-word; max-height: 220px; overflow-y: auto;
+  }
+  tr.row-E { border-left: 3px solid var(--unknown); }
+  tr.row-F { border-left: 3px solid #fecaca; }
+
+  .legend {
+    position: relative; margin-left: 2px;
+  }
+  .legend summary {
+    list-style: none; cursor: pointer; color: var(--muted); font-size: 16px;
+    border: 1px solid var(--border); border-radius: 50%; width: 22px; height: 22px;
+    display: flex; align-items: center; justify-content: center; user-select: none;
+  }
+  .legend summary::-webkit-details-marker { display: none; }
+  .legend summary:hover { color: var(--text); border-color: #64748b; }
+  .legend[open] summary { color: var(--accent); border-color: var(--accent); }
+  .legend-box {
+    position: absolute; top: 28px; right: 0; z-index: 10; width: 300px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px 14px; font-size: 12px; line-height: 1.6; box-shadow: 0 8px 24px rgba(0,0,0,.4);
+  }
+  .legend-box .badge { margin-right: 4px; }
+
+  .toolbar button.icon-btn {
+    width: 32px; height: 32px; padding: 0; display: inline-flex;
+    align-items: center; justify-content: center;
+  }
+  .icon-btn svg, .copy-btn svg {
+    width: 16px; height: 16px; fill: none; stroke: currentColor;
+    stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+  }
+  .toolbar button.icon-btn.danger:hover { color: var(--unknown); border-color: var(--unknown); }
+  .toolbar button.icon-btn.active { color: var(--accent); border-color: var(--accent); background: rgba(56,189,248,.1); }
+  .icon-btn.spin svg { animation: spin .6s linear; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .bundle-wrap { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+  .bundle-body { flex: 1; min-width: 0; }
+  .bundle-live-collapse { flex: 1; min-width: 0; }
+  .bundle-live-collapse summary { cursor: pointer; font-size: 12px; list-style-position: outside; }
+  .bundle-live-collapse summary::-webkit-details-marker { color: var(--muted); }
+  .bundle-live-collapse[open] summary { margin-bottom: 4px; }
+  .bundle-live-collapse .bundle-body { margin-left: 2px; }
+  .copy-btn {
+    flex: none; width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center;
+    background: transparent; color: var(--muted); border: 1px solid var(--border);
+    border-radius: 6px; cursor: pointer; padding: 0;
+  }
+  .copy-btn:hover { color: var(--text); border-color: #64748b; }
+  .copy-btn.ok { color: var(--match); border-color: var(--match); }
+
+  .stat.muted .n { color: var(--muted); }
+  .progress-card {
+    flex: 1; min-width: 260px; max-width: 520px; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 14px; display: flex; flex-direction: column; justify-content: center; gap: 7px;
+  }
+  .progress-label { font-size: 12px; color: var(--muted); }
+  .progress-label b { color: var(--text); }
+  .progress { display: flex; height: 10px; border-radius: 6px; background: #0b1220; overflow: hidden; border: 1px solid var(--border); }
+  .progress > div { height: 100%; transition: width .3s ease; }
+  .progress .p-pass { background: var(--match); }
+  .progress .p-part { background: var(--partial); }
+  .progress .p-fail { background: var(--unknown); }
+  .badge.cov-PASSED { background: rgba(34,197,94,.15); color: var(--match); }
+  .badge.cov-FAILED { background: rgba(239,68,68,.15); color: var(--unknown); }
+  .badge.cov-IN_PROGRESS { background: rgba(234,179,8,.15); color: var(--partial); }
+  tr.cov-IN_PROGRESS { border-left: 3px solid var(--partial); }
+  .badge.cov-NOT_TESTED { background: rgba(148,163,184,.15); color: var(--muted); }
+  tr.cov-PASSED { border-left: 3px solid var(--match); }
+  tr.cov-FAILED { border-left: 3px solid var(--unknown); }
+  tr.cov-NOT_TESTED { border-left: 3px solid #475569; }
+  .badge.cov-BLOCKED { background: rgba(167,139,250,.15); color: #a78bfa; }
+  tr.cov-BLOCKED { border-left: 3px solid #a78bfa; }
+  tr.cov-NOT_TESTED td { color: #a8b3c4; }
+  .cov-def { font-size: 12px; color: #cbd5e1; max-width: 220px; }
+  .cov-reason { font-size: 12px; color: var(--partial); }
+  .export-menu { position: relative; }
+  .export-menu summary {
+    list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; height: 32px;
+    padding: 0 12px; font-size: 12px; background: var(--panel); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px; user-select: none;
+  }
+  .export-menu summary::-webkit-details-marker { display: none; }
+  .export-menu summary:hover, .export-menu[open] summary { border-color: var(--accent); color: var(--accent); }
+  .export-menu summary svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .export-list {
+    position: absolute; top: 38px; left: 0; z-index: 12; min-width: 240px; padding: 6px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.4);
+  }
+  .export-list a {
+    display: flex; justify-content: space-between; gap: 12px; padding: 8px 10px; border-radius: 6px;
+    color: var(--text); text-decoration: none; font-size: 12.5px;
+  }
+  .export-list a:hover { background: #16213a; }
+  .export-list small { color: var(--muted); }
+  .ts { white-space: nowrap; }
+  .dt { display: block; font-size: 10.5px; color: var(--muted); margin-top: 2px; white-space: nowrap; }
+  .dt b { color: var(--accent); font-weight: 600; margin-left: 4px; }
+
+  .spec-box {
+    margin-left: auto; display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; box-shadow: 0 1px 0 rgba(255,255,255,.04) inset;
+  }
+  .spec-box.err { border-color: var(--unknown); }
+  .spec-ico { display: flex; color: var(--accent); }
+  .spec-box.err .spec-ico { color: var(--unknown); }
+  .spec-ico svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .spec-title { font-size: 12.5px; font-weight: 600; }
+  .spec-sub { font-size: 11px; color: var(--muted); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .spec-box.err .spec-sub { color: var(--unknown); }
+  .spec-box.flash { animation: specflash 1.5s ease-out; }
+  .spec-box.flash-err { animation: specflasherr 1.5s ease-out; }
+  .spec-box.link { color: var(--text); text-decoration: none; cursor: pointer; }
+  .spec-box.link:hover { border-color: var(--accent); }
+  .spec-box.link .spec-sub { white-space: normal; max-width: 320px; }
+  @keyframes specflash {
+    0% { box-shadow: 0 0 0 0 rgba(34,197,94,.65); border-color: var(--match); background: rgba(34,197,94,.14); }
+    100% { box-shadow: 0 0 0 14px rgba(34,197,94,0); }
+  }
+  @keyframes specflasherr {
+    0% { box-shadow: 0 0 0 0 rgba(239,68,68,.65); border-color: var(--unknown); background: rgba(239,68,68,.14); }
+    100% { box-shadow: 0 0 0 14px rgba(239,68,68,0); }
+  }
+  .spec-sub.done { color: var(--match); font-weight: 600; }
+  .toolbar button.reload-btn.loading { opacity: .8; cursor: progress; }
+  .toolbar button.reload-btn.loading::before {
+    content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 6px; vertical-align: -1px;
+    border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .6s linear infinite;
+  }
+  .toolbar button.reload-btn.ok { color: var(--match); border-color: var(--match); }
+  .toolbar button.reload-btn.bad { color: var(--unknown); border-color: var(--unknown); }
+
+  .head-left { display: flex; align-items: center; gap: 14px; }
+  .mirror-toggle {
+    display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; font-size: 12px;
+    background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; cursor: pointer;
+  }
+  .mirror-toggle svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .mirror-toggle:hover { border-color: #64748b; }
+  body.mirror-open .mirror-toggle { color: var(--accent); border-color: var(--accent); background: rgba(56,189,248,.1); }
+
+  .update-box { display: inline-flex; align-items: center; gap: 8px; }
+  .update-ver { font-size: 11px; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .update-btn {
+    display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; font-size: 12px;
+    background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; cursor: pointer;
+  }
+  .update-btn:hover { border-color: #64748b; }
+  .update-btn.avail { color: var(--match); border-color: var(--match); background: rgba(34,197,94,.1); }
+  .update-btn.busy { opacity: .7; cursor: progress; }
+  .update-btn.busy::before {
+    content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 2px;
+    border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .6s linear infinite;
+  }
+
+  .badge.rc-true { background: rgba(34,197,94,.15); color: var(--match); }
+  .badge.rc-false { background: rgba(148,163,184,.15); color: var(--muted); }
+  .rc-type { font-size: 11px; color: var(--muted); }
+  .rc-meta { padding: 0 20px 10px; font-size: 12px; color: var(--muted); line-height: 1.6; }
+  .rc-meta b { color: var(--text); font-weight: 600; }
+  .rc-meta .st-success { color: var(--match); } .rc-meta .st-failed { color: var(--unknown); } .rc-meta .st-fetching { color: var(--partial); }
+  .rc-val { white-space: pre-wrap; word-break: break-all; }
+  .toolbar select.rc-session { max-width: 420px; }
+  :root { --mirror-w: 400px; }
+  body.mirror-open { padding-right: var(--mirror-w); }
+  #mirror-panel {
+    display: none; position: fixed; top: 0; right: 0; bottom: 0; width: var(--mirror-w); z-index: 20;
+    flex-direction: column; gap: 8px; padding: 12px; background: var(--panel); border-left: 1px solid var(--border);
+  }
+  body.mirror-open #mirror-panel { display: flex; }
+  #mirror-resize { position: absolute; left: -3px; top: 0; bottom: 0; width: 7px; cursor: col-resize; z-index: 2; }
+  #mirror-resize:hover, #mirror-resize.drag { background: rgba(56,189,248,.45); }
+  .mirror-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .mirror-title { font-size: 12.5px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .mirror-sub { font-size: 11px; color: var(--muted); }
+  #mirror-rec-timer { display: none; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; color: var(--unknown); font-variant-numeric: tabular-nums; }
+  #mirror-rec-timer::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--unknown); animation: recblink 1s infinite; }
+  @keyframes recblink { 50% { opacity: .25; } }
+  body.recording #mirror-rec-timer { display: inline-flex; }
+  .mirror-actions { display: flex; gap: 6px; }
+  .mirror-actions button, .mirror-nav button {
+    width: 28px; height: 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center;
+    background: var(--bg); color: var(--muted); border: 1px solid var(--border); border-radius: 6px; cursor: pointer;
+  }
+  .mirror-actions button:hover, .mirror-nav button:hover { color: var(--text); border-color: #64748b; }
+  .mirror-actions button:disabled { opacity: .45; cursor: progress; }
+  .mirror-actions svg, .mirror-nav svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  #mirror-rec svg circle { fill: var(--unknown); stroke: var(--unknown); }
+  body.recording #mirror-rec { border-color: var(--unknown); background: rgba(239,68,68,.15); }
+  body.recording #mirror-rec svg circle { fill: none; }
+  body.recording #mirror-rec svg rect { display: block; }
+  #mirror-rec svg rect { display: none; fill: var(--unknown); stroke: var(--unknown); }
+  #mirror-stage { flex: 1 1 auto; min-height: 0; position: relative; display: flex; align-items: center; justify-content: center; }
+  #mirror-screen { display: none; position: relative; }
+  #mirror-canvas, #mirror-fx { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 12px; }
+  #mirror-canvas { background: #000; border: 1px solid var(--border); }
+  /* red arrow with white outline; hotspot = the arrow tip */
+  #mirror-fx { touch-action: none; cursor: crosshair;
+    cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'><path d='M5 3 L5 23 L10 18.5 L13.5 26 L17 24.4 L13.6 17 L20.5 17 Z' fill='%23ef4444' stroke='white' stroke-width='2' stroke-linejoin='round'/></svg>") 5 3, crosshair; }
+  #mirror-msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 20px; font-size: 12px; color: var(--muted); }
+  #mirror-msg.err { color: var(--partial); }
+  .mirror-nav { display: flex; gap: 10px; justify-content: center; position: relative; }
+  .mirror-nav .nav-power { position: absolute; right: 0; top: 0; }
+  .mirror-nav button { width: 56px; height: 30px; }
+  #mirror-toast { display: none; font-size: 11.5px; line-height: 1.45; padding: 7px 10px; border-radius: 6px; background: rgba(34,197,94,.12); color: var(--match); word-break: break-all; }
+  #mirror-toast.err { background: rgba(239,68,68,.12); color: var(--unknown); }
+</style>
+</head>
+<body>
+<header>
+  <div class="head-left">
+    <h1>Auto Tracking Test — Realtime</h1>
+    <button class="mirror-toggle" id="mirror-toggle" title="Xem màn hình máy đang kết nối">
+      <svg viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="2"/><line x1="11" y1="18" x2="13" y2="18"/></svg>
+      Màn hình máy
+    </button>
+    <div class="update-box" id="update-box" style="display:none">
+      <span class="update-ver" id="update-ver" title="">v—</span>
+      <button class="update-btn" id="update-btn" title="Kiểm tra và cài bản mới">Update</button>
+    </div>
+  </div>
+  <div style="text-align:right">
+    <div id="status">Đang kết nối...</div>
+    <div id="device-status" class="muted" style="font-size:11.5px; margin-top:2px;">device: —</div>
+    <div id="status-message" class="muted" style="font-size:11px; margin-top:2px; max-width:420px;"></div>
+  </div>
+</header>
+
+<div class="tabbar">
+  <button class="tab-btn active" data-tab="other">Other events <span class="tab-badge" id="tabcount-other">0</span></button>
+  <button class="tab-btn" data-tab="ads">Ads tracking (iaa_*) <span class="tab-badge" id="tabcount-ads">0</span></button>
+  <button class="tab-btn" data-tab="coverage">Auto Event Tracking <span class="tab-badge" id="tabcount-coverage">0</span></button>
+  <button class="tab-btn" data-tab="errors">Errors (app) <span class="tab-badge" id="tabcount-errors">0</span></button>
+  <button class="tab-btn" data-tab="rc">RC Manager <span class="tab-badge" id="tabcount-rc">–</span></button>
+</div>
+
+<div id="panel-other" class="panel active"></div>
+<div id="panel-ads" class="panel"></div>
+<div id="panel-coverage" class="panel"></div>
+<div id="panel-errors" class="panel"></div>
+<div id="panel-rc" class="panel"></div>
+
+<aside id="mirror-panel">
+  <div id="mirror-resize" title="Kéo để đổi độ rộng"></div>
+  <div class="mirror-head">
+    <div>
+      <div class="mirror-title">Màn hình máy <span id="mirror-rec-timer">00:00</span></div>
+      <div class="mirror-sub" id="mirror-sub">—</div>
+    </div>
+    <div class="mirror-actions">
+      <button id="mirror-shot" title="Chụp ảnh màn hình (PNG full-res) → lưu ra Desktop"><svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
+      <button id="mirror-rec" title="Quay video (bật Show taps trên máy) → lưu ra Desktop"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg></button>
+      <button id="mirror-restart" title="Kết nối lại"><svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.5 15a9 9 0 1 1-2.1-9.4L23 10"/></svg></button>
+      <button id="mirror-close" title="Đóng"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+  </div>
+  <div id="mirror-stage">
+    <div id="mirror-screen"><canvas id="mirror-canvas"></canvas><canvas id="mirror-fx"></canvas></div>
+    <div id="mirror-msg"></div>
+  </div>
+  <div class="mirror-nav">
+    <button data-key="back" title="Back"><svg viewBox="0 0 24 24"><polygon points="17 4 7 12 17 20"/></svg></button>
+    <button data-key="home" title="Home"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/></svg></button>
+    <button data-key="recents" title="Recents"><svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></button>
+    <button data-key="power" class="nav-power" title="Power (bật / tắt màn hình)"><svg viewBox="0 0 24 24"><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg></button>
+  </div>
+  <div id="mirror-toast"></div>
+</aside>
+
+<script>
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function fmtDelta(sec) {
+  if (sec == null) return '';
+  if (sec < 60) return '+' + sec.toFixed(1) + 's';
+  const m = Math.floor(sec / 60), s = Math.floor(sec % 60);
+  if (m < 60) return `+${m}m${String(s).padStart(2, '0')}s`;
+  return `+${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}m`;
+}
+function evTs(ev) { return ev.dev_ts != null ? ev.dev_ts : ev.time; }
+
+function stampOf(ev) {
+  if (ev.log_time) return ev.log_time;
+  const d = new Date(ev.time * 1000);
+  return d.toLocaleDateString('sv-SE') + ' ' + d.toLocaleTimeString('vi-VN', {hour12: false});
+}
+
+function pidTid(ev) { return ev.pid ? `${ev.pid}-${ev.tid}` : ''; }
+
+function timeCell(ev) {
+  const d = fmtDelta(ev._dt);
+  return `<div class="ts">${escapeHtml(stampOf(ev))}</div>`
+    + `<div class="dt">${pidTid(ev)}${d ? ` <b title="Cách event trước đó">${d}</b>` : ''}</div>`;
+}
+
+function copyErrorTextFor(ev) {
+  const head = `${stampOf(ev)} ${pidTid(ev)}`.trim();
+  return `${head}\n${ev.level === 'F' ? 'FATAL' : 'ERROR'} ${ev.tag} (${ev.package})\n${ev.message}`;
+}
+
+function copyTextFor(ev, mode) {
+  const stamp = `${stampOf(ev)} ${pidTid(ev)}`.trim();
+  if (mode === 'json') {
+    return JSON.stringify({time: stampOf(ev), pid_tid: pidTid(ev) || undefined,
+                           event: ev.event_name, bundle: ev.bundle}, null, 2);
+  }
+  const pills = Object.entries(ev.bundle).map(([k, v]) => `${k}=${v}`).join(', ');
+  return `${stamp}\n${ev.event_name}\n${pills}`;
+}
+
+// Spec sống trên Lark Wiki — nguồn gốc của file xlsx đang đọc local; nút mở trong tab Coverage trỏ tới đây.
+const COVERAGE_SPEC_URL = 'https://technify.sg.larksuite.com/wiki/PYxGwDEFAizBpIk6DkolwgfIguT?fromScene=spaceOverview';
+
+const ICON = {
+  trash: '<svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>',
+  pause: '<svg viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" style="fill:currentColor"/><rect x="14" y="4" width="4" height="16" style="fill:currentColor"/></svg>',
+  play: '<svg viewBox="0 0 24 24"><polygon points="6 4 20 12 6 20 6 4" style="fill:currentColor"/></svg>',
+  refresh: '<svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>',
+  copy: '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+  check: '<svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>',
+  download: '<svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
+  file: '<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>',
+};
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch (_) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    ta.remove();
+  }
+}
+
+function toolbarIcons(key) {
+  return `
+    <button class="icon-btn" id="refresh-${key}" title="Refresh log — tải lại log từ server và khớp lại với spec hiện tại">${ICON.refresh}</button>
+    <button class="icon-btn" id="pause-${key}" title="Tạm dừng">${ICON.pause}</button>
+    <button class="icon-btn danger" id="clear-${key}" title="Xoá log">${ICON.trash}</button>`;
+}
+
+function wireToolbarIcons(panel, key, scope) {
+  document.getElementById(`refresh-${key}`).addEventListener('click', (e) => refreshAll(e.currentTarget));
+
+  document.getElementById(`pause-${key}`).addEventListener('click', (e) => {
+    panel.paused = !panel.paused;
+    const btn = e.currentTarget;
+    btn.innerHTML = panel.paused ? ICON.play : ICON.pause;
+    btn.title = panel.paused ? 'Tiếp tục' : 'Tạm dừng';
+    btn.classList.toggle('active', panel.paused);
+  });
+
+  document.getElementById(`clear-${key}`).addEventListener('click', async () => {
+    await fetch('/api/clear', {method: 'POST', body: JSON.stringify({scope})});
+    panel.clear();
+    scheduleCoverage();
+  });
+}
+
+let lastSpec = null;
+const specTimers = {};
+
+function specFileName(j) { return j.path ? j.path.split(/[\\/]/).pop() : '—'; }
+
+function paintSpecSub(key, j) {
+  const sub = document.getElementById(`spec-sub-${key}`);
+  sub.classList.remove('done');
+  sub.textContent = j.error ? j.error : specFileName(j);
+  sub.title = j.error || j.path || '';
+}
+
+function renderSpec(j, opts = {}) {
+  const changed = lastSpec && (lastSpec.rows !== j.rows || lastSpec.path !== j.path
+    || lastSpec.error !== j.error || lastSpec.mtime !== j.mtime);
+  lastSpec = j;
+  for (const key of ['other', 'ads']) {
+    const box = document.getElementById(`spec-box-${key}`);
+    box.classList.toggle('err', !!j.error);
+    document.getElementById(`spec-title-${key}`).textContent = j.error ? 'Lỗi spec' : `Spec: ${j.rows} dòng`;
+    paintSpecSub(key, j);
+
+    if (changed) scheduleCoverage();
+    if (opts.flash || changed) {
+      box.classList.remove('flash', 'flash-err');
+      void box.offsetWidth;
+      box.classList.add(j.error ? 'flash-err' : 'flash');
+      if (!j.error) {
+        const sub = document.getElementById(`spec-sub-${key}`);
+        sub.textContent = `✓ Đã nạp lại lúc ${new Date().toLocaleTimeString('vi-VN', {hour12: false})}`;
+        sub.classList.add('done');
+        clearTimeout(specTimers[key]);
+        specTimers[key] = setTimeout(() => paintSpecSub(key, lastSpec), 3500);
+      }
+    }
+  }
+}
+
+async function reloadSpec(btn) {
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.classList.add('loading');
+  btn.textContent = 'Đang nạp…';
+  let j = null;
+  try {
+    await Promise.all([fetch('/api/reload', {method: 'POST'}), new Promise(r => setTimeout(r, 450))]);
+    j = await (await fetch('/api/spec')).json();
+    renderSpec(j, {flash: true});
+  } catch (_) {
+    j = {error: 'Không gọi được server'};
+  }
+  btn.classList.remove('loading');
+  btn.classList.add(j.error ? 'bad' : 'ok');
+  btn.textContent = j.error ? '✕ Lỗi' : '✓ Đã nạp';
+  setTimeout(() => {
+    btn.disabled = false;
+    btn.classList.remove('ok', 'bad');
+    btn.textContent = label;
+  }, 1600);
+}
+
+function renderBundle(bundle) {
+  return Object.entries(bundle).map(([k,v]) => `<span class="pill mono">${k}=${escapeHtml(v)}</span>`).join(' ');
+}
+function identifierOf(ev) {
+  if (ev.event_name.startsWith('screen_')) return ev.bundle.screen_name || '';
+  if (ev.event_name.startsWith('overlay_')) return ev.bundle.overlay_name || '';
+  return ev.bundle.button_name || (ev.spec_row ? ev.spec_row.identifier : '') || '';
+}
+function specNote(ev) {
+  if (!ev.spec_row) {
+    return `<span class="muted">Không tìm thấy dòng spec khớp — event này chưa có trong sheet, hoặc tên/định danh bị sai.</span>`;
+  }
+  let parts = [];
+  parts.push(`<div class="kv"><b>Screen:</b> ${escapeHtml(ev.spec_row.screen)} &nbsp; <b>Định nghĩa:</b> ${escapeHtml(ev.spec_row.definition)}</div>`);
+  if (ev.missing.length) parts.push(`<div class="kv">Thiếu param: ${ev.missing.map(k=>`<span class="pill">${k}</span>`).join('')}</div>`);
+  if (ev.extra.length) parts.push(`<div class="kv">Param lạ (chưa khai spec): ${ev.extra.map(k=>`<span class="pill">${k}</span>`).join('')}</div>`);
+  if ((ev.wrong || []).length) parts.push(`<div class="kv">Sai giá trị (ngoài Valid Value): ${ev.wrong.map(k=>`<span class="pill">${escapeHtml(k)}</span>`).join('')}</div>`);
+  return parts.join('');
+}
+function isAdsEvent(ev) {
+  return ev.event_name.toLowerCase().startsWith('iaa_');
+}
+
+function createPanel(key, title) {
+  const root = document.getElementById(`panel-${key}`);
+  root.innerHTML = `
+    <div class="summary">
+      <div class="stat"><div class="n" id="s-total-${key}">0</div><div class="l">Total</div></div>
+      <div class="stat match"><div class="n" id="s-match-${key}">0</div><div class="l">Match</div></div>
+      <div class="stat partial"><div class="n" id="s-partial-${key}">0</div><div class="l">Partial</div></div>
+      <div class="stat unknown"><div class="n" id="s-unknown-${key}">0</div><div class="l">Unknown</div></div>
+      <details class="legend">
+        <summary>?</summary>
+        <div class="legend-box">
+          <div><span class="badge MATCH">MATCH</span> khớp đúng spec: đủ tên định danh + đủ param đã khai báo.</div>
+          <div style="margin-top:6px"><span class="badge PARTIAL">PARTIAL</span> khớp được 1 dòng spec nhưng thiếu param đã khai, hoặc có param lạ chưa khai trong Bundle Params.</div>
+          <div style="margin-top:6px"><span class="badge UNKNOWN">UNKNOWN</span> không tìm thấy dòng spec nào khớp — event/tên định danh sai hoặc chưa có trong sheet.</div>
+        </div>
+      </details>
+    </div>
+    <div class="toolbar">
+      <select id="filter-${key}">
+        <option value="">Tất cả verdict</option>
+        <option value="MATCH">Chỉ Match</option>
+        <option value="PARTIAL">Chỉ Partial</option>
+        <option value="UNKNOWN">Chỉ Unknown</option>
+      </select>
+      <input id="search-${key}" placeholder="Lọc theo event/định danh/package, cách nhau bằng , hoặc | (vd: iaa_loaded | iaa_request)" style="min-width:300px">
+      <input id="search-bundle-${key}" placeholder="Tìm text trong Bundle live (vd: ScrHome)" style="min-width:220px">
+      <button id="bundle-mode-${key}">Bundle: Pills</button>
+      ${toolbarIcons(key)}
+      <div class="spec-box" id="spec-box-${key}">
+        <span class="spec-ico">${ICON.file}</span>
+        <div>
+          <div class="spec-title" id="spec-title-${key}">Spec: —</div>
+          <div class="spec-sub" id="spec-sub-${key}"></div>
+        </div>
+        <button class="reload-btn" id="reload-${key}" title="Nạp lại file spec ngay">Reload spec file</button>
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:200px">Time</th>
+          <th style="width:70px">Verdict</th>
+          <th style="width:150px">Package</th>
+          <th style="width:130px">Event</th>
+          <th>Bundle live</th>
+          <th>Spec khớp / ghi chú</th>
+        </tr>
+      </thead>
+      <tbody id="rows-${key}"></tbody>
+    </table>
+    <div id="empty-${key}" class="empty">Chưa có event nào${title}.</div>
+  `;
+
+  const panel = {
+    key,
+    rowsEl: document.getElementById(`rows-${key}`),
+    emptyEl: document.getElementById(`empty-${key}`),
+    filterEl: document.getElementById(`filter-${key}`),
+    searchEl: document.getElementById(`search-${key}`),
+    searchBundleEl: document.getElementById(`search-bundle-${key}`),
+    bundleModeBtn: document.getElementById(`bundle-mode-${key}`),
+    badgeEl: document.getElementById(`tabcount-${key}`),
+    paused: false,
+    bundleMode: 'pills',
+    counts: {MATCH:0, PARTIAL:0, UNKNOWN:0},
+    allEvents: [],
+  };
+
+  function matchesTerms(raw, hay) {
+    if (!raw) return true;
+    const terms = raw.split(/[,|]/).map(t => t.trim().toLowerCase()).filter(Boolean);
+    if (terms.length === 0) return true;
+    return terms.some(t => hay.includes(t));
+  }
+
+  function passesFilter(ev) {
+    const f = panel.filterEl.value;
+    if (f && ev.verdict !== f) return false;
+
+    const bundleHay = JSON.stringify(ev.bundle).toLowerCase();
+    if (!matchesTerms(panel.searchBundleEl.value.trim(), bundleHay)) return false;
+
+    const generalHay = (ev.event_name + ' ' + identifierOf(ev) + ' ' + (ev.package || '') + ' '
+      + (ev.spec_row ? ev.spec_row.screen : '')).toLowerCase();
+    return matchesTerms(panel.searchEl.value.trim(), generalHay);
+  }
+
+  function bundleHtml(ev) {
+    if (panel.bundleMode === 'json') {
+      return `<pre class="bundle-json mono">${escapeHtml(JSON.stringify(ev.bundle, null, 2))}</pre>`;
+    }
+    return renderBundle(ev.bundle);
+  }
+
+  function rowHtml(ev) {
+    return `
+      <td class="mono">${timeCell(ev)}</td>
+      <td><span class="badge ${ev.verdict}">${ev.verdict}</span></td>
+      <td class="mono pkg">${escapeHtml(ev.package || '?')}</td>
+      <td class="mono">${escapeHtml(ev.event_name)}</td>
+      <td class="bundle-cell">
+        <div class="bundle-wrap">
+          <div class="bundle-body">${bundleHtml(ev)}</div>
+          <button class="copy-btn" title="Copy time + event + bundle (theo chế độ Pills/JSON đang chọn)">${ICON.copy}</button>
+        </div>
+      </td>
+      <td>${specNote(ev)}</td>
+    `;
+  }
+
+  function makeRow(ev) {
+    const tr = document.createElement('tr');
+    tr.className = 'row-' + ev.verdict;
+    tr.innerHTML = rowHtml(ev);
+    tr._ev = ev;
+    return tr;
+  }
+
+  function updateStats() {
+    panel.badgeEl.textContent = panel.allEvents.length;
+    document.getElementById(`s-total-${key}`).textContent = panel.allEvents.length;
+    document.getElementById(`s-match-${key}`).textContent = panel.counts.MATCH || 0;
+    document.getElementById(`s-partial-${key}`).textContent = panel.counts.PARTIAL || 0;
+    document.getElementById(`s-unknown-${key}`).textContent = panel.counts.UNKNOWN || 0;
+  }
+
+  panel.addRow = function(ev) {
+    const prev = panel.allEvents[panel.allEvents.length - 1];
+    ev._dt = prev ? evTs(ev) - evTs(prev) : null;
+    panel.allEvents.push(ev);
+    panel.counts[ev.verdict] = (panel.counts[ev.verdict] || 0) + 1;
+    updateStats();
+    if (!passesFilter(ev)) return;
+    panel.emptyEl.style.display = 'none';
+    panel.rowsEl.prepend(makeRow(ev));
+  };
+
+  panel.rerenderAll = function() {
+    panel.rowsEl.innerHTML = '';
+    const filtered = panel.allEvents.filter(passesFilter);
+    panel.emptyEl.style.display = filtered.length ? 'none' : 'block';
+    for (const ev of filtered.slice().reverse()) panel.rowsEl.appendChild(makeRow(ev));
+  };
+
+  panel.clear = function() {
+    panel.allEvents = [];
+    panel.counts = {MATCH:0, PARTIAL:0, UNKNOWN:0};
+    panel.rowsEl.innerHTML = '';
+    panel.emptyEl.style.display = 'block';
+    updateStats();
+  };
+
+  panel.rowsEl.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.copy-btn');
+    if (!btn) return;
+    await copyText(copyTextFor(btn.closest('tr')._ev, panel.bundleMode));
+    btn.innerHTML = ICON.check;
+    btn.classList.add('ok');
+    setTimeout(() => { btn.innerHTML = ICON.copy; btn.classList.remove('ok'); }, 1200);
+  });
+
+  panel.filterEl.addEventListener('change', panel.rerenderAll);
+  panel.searchEl.addEventListener('input', panel.rerenderAll);
+  panel.searchBundleEl.addEventListener('input', panel.rerenderAll);
+
+  panel.bundleModeBtn.addEventListener('click', () => {
+    panel.bundleMode = panel.bundleMode === 'pills' ? 'json' : 'pills';
+    panel.bundleModeBtn.textContent = panel.bundleMode === 'pills' ? 'Bundle: Pills' : 'Bundle: JSON';
+    panel.rerenderAll();
+  });
+
+  wireToolbarIcons(panel, key, key);
+
+  document.getElementById(`reload-${key}`).addEventListener('click', (e) => reloadSpec(e.currentTarget));
+
+  return panel;
+}
+
+function createCoveragePanel(key) {
+  const root = document.getElementById(`panel-${key}`);
+  root.innerHTML = `
+    <div class="summary">
+      <div class="stat"><div class="n" id="cov-total">0</div><div class="l">Spec rows</div></div>
+      <div class="stat match"><div class="n" id="cov-passed">0</div><div class="l">Passed</div></div>
+      <div class="stat unknown"><div class="n" id="cov-failed">0</div><div class="l">Failed</div></div>
+      <div class="stat partial"><div class="n" id="cov-inprogress">0</div><div class="l">Đang test</div></div>
+      <div class="stat muted"><div class="n" id="cov-nottested">0</div><div class="l">Chưa test</div></div>
+      <div class="progress-card">
+        <div class="progress-label" id="cov-label">Chưa có spec.</div>
+        <div class="progress"><div class="p-pass" id="cov-bar-pass" style="width:0"></div><div class="p-part" id="cov-bar-part" style="width:0"></div><div class="p-fail" id="cov-bar-fail" style="width:0"></div></div>
+      </div>
+      <details class="legend">
+        <summary>?</summary>
+        <div class="legend-box">
+          <div><span class="badge cov-PASSED">Passed</span> mọi định danh của dòng spec đã từng thấy MATCH.</div>
+          <div style="margin-top:6px"><span class="badge cov-IN_PROGRESS">Đang test</span> mới thấy một phần — dòng spec có nhiều màn/nút.</div>
+          <div style="margin-top:6px"><span class="badge cov-FAILED">Failed</span> có định danh chỉ mới thấy PARTIAL (thiếu/thừa param).</div>
+          <div style="margin-top:6px"><span class="badge cov-NOT_TESTED">Chưa test</span> chưa thấy lần nào.</div>
+        </div>
+      </details>
+    </div>
+    <div class="toolbar">
+      <select id="cov-status">
+        <option value="">Tất cả trạng thái</option>
+        <option value="NOT_TESTED">Chưa test</option>
+        <option value="IN_PROGRESS">Đang test</option>
+        <option value="BLOCKED">Không test được</option>
+        <option value="FAILED">Failed</option>
+        <option value="PASSED">Passed</option>
+      </select>
+      <select id="cov-feature"><option value="">Tất cả Feature</option></select>
+      <input id="cov-search" placeholder="Tìm event/định danh/định nghĩa, cách nhau bằng , hoặc |" style="min-width:320px">
+      <button class="icon-btn" id="refresh-${key}" title="Refresh — đồng bộ lại từ Lark rồi khớp lại với spec">${ICON.refresh}</button>
+      <details class="export-menu">
+        <summary>${ICON.download}<span>Xuất báo cáo</span></summary>
+        <div class="export-list">
+          <a href="/api/report?format=xlsx" download>Excel (.xlsx) <small>đầy đủ 5 sheet</small></a>
+          <a href="/api/report?format=md" download>Markdown (.md) <small>dán vào ticket</small></a>
+          <a href="/api/report?format=csv" download>CSV (.csv) <small>chỉ bảng coverage</small></a>
+        </div>
+      </details>
+      <a class="spec-box link" id="cov-spec-link" href="${COVERAGE_SPEC_URL}" target="_blank" rel="noopener">
+        <span class="spec-ico">${ICON.file}</span>
+        <div>
+          <div class="spec-title">Tracking Auto (Lark)</div>
+          <div class="spec-sub">Sửa spec trực tiếp trên đây — dashboard tự đồng bộ lại mỗi 60s (hoặc bấm Refresh).</div>
+        </div>
+      </a>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:100px">Trạng thái</th>
+          <th style="width:130px">Feature</th>
+          <th style="width:130px">Event</th>
+          <th style="width:220px">Định nghĩa</th>
+          <th style="width:160px">Valid Value</th>
+          <th style="width:340px">Bundle live</th>
+          <th style="width:90px">Đã thấy</th>
+          <th style="width:220px">Ghi chú</th>
+        </tr>
+      </thead>
+      <tbody id="rows-${key}"></tbody>
+    </table>
+    <div id="empty-${key}" class="empty">Chưa có dòng spec nào — thả file spec vào thư mục tracking-spec.</div>
+  `;
+
+  const LABEL = {PASSED: 'Passed', FAILED: 'Failed', IN_PROGRESS: 'Đang test', NOT_TESTED: 'Chưa test', BLOCKED: 'Không test được'};
+  const panel = {
+    key,
+    rowsEl: document.getElementById(`rows-${key}`),
+    emptyEl: document.getElementById(`empty-${key}`),
+    statusEl: document.getElementById('cov-status'),
+    featureEl: document.getElementById('cov-feature'),
+    searchEl: document.getElementById('cov-search'),
+    badgeEl: document.getElementById(`tabcount-${key}`),
+    paused: false,
+    data: null,
+  };
+
+  function passes(r) {
+    if (panel.statusEl.value && r.status !== panel.statusEl.value) return false;
+    if (panel.featureEl.value && r.feature !== panel.featureEl.value) return false;
+    const raw = panel.searchEl.value.trim();
+    if (!raw) return true;
+    const terms = raw.split(/[,|]/).map(t => t.trim().toLowerCase()).filter(Boolean);
+    if (!terms.length) return true;
+    const hay = `${r.feature} ${r.event_name} ${r.identifier} ${r.definition} ${r.valid_value || ''}`.toLowerCase();
+    return terms.some(t => hay.includes(t));
+  }
+
+  function syncFeatures(rows) {
+    const feats = [...new Set(rows.map(r => r.feature).filter(Boolean))];
+    const have = [...panel.featureEl.options].slice(1).map(o => o.value);
+    if (feats.join('\u0001') === have.join('\u0001')) return;
+    const keep = panel.featureEl.value;
+    panel.featureEl.innerHTML = '<option value="">Tất cả Feature</option>'
+      + feats.map(f => `<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join('');
+    panel.featureEl.value = feats.includes(keep) ? keep : '';
+  }
+
+  // Same text shape as the "Copy" button in Other events (copyTextFor, pills mode), so testers —
+  // or an automation script driving the app — can paste one line straight from this tab.
+  function bundleLiveCopyText(be) {
+    const stamp = `${be.log_time || ''} ${be.pid ? be.pid + '-' + be.tid : ''}`.trim();
+    const pills = Object.entries(be.bundle || {}).map(([k, v]) => `${k}=${v}`).join(', ');
+    return `${stamp}\n${be.event_name}\n${pills}`;
+  }
+
+  function bundleLiveCell(r) {
+    const be = r.bundle_live;
+    if (!be) return '<span class="muted">—</span>';
+    const timeShort = (be.log_time || '').replace(/^\d{4}-\d{2}-\d{2} /, '');  // drop the date, keep HH:MM:SS.mmm
+    const stampFull = `${be.log_time || ''}${be.pid ? ` ${be.pid}-${be.tid}` : ''}`.trim();
+    // Collapsed by default (<details>, no JS needed) — 386 spec rows with the full param list
+    // always expanded made the table very tall; click to see params, copy works either way.
+    return `
+      <div class="bundle-wrap">
+        <details class="bundle-live-collapse">
+          <summary><span class="muted mono">${escapeHtml(timeShort)}</span> · <b>${escapeHtml(be.event_name)}</b></summary>
+          <div class="bundle-body">
+            <div class="kv" style="margin:4px 0"><span class="muted">${escapeHtml(stampFull)}</span></div>
+            ${renderBundle(be.bundle || {})}
+          </div>
+        </details>
+        <button class="copy-btn" title="Copy log này (giống Copy ở tab Other events)">${ICON.copy}</button>
+      </div>`;
+  }
+
+  function rowHtml(r) {
+    const seen = r.match || r.partial
+      ? `<span style="color:var(--match)">✓ ${r.match}</span>${r.partial ? ` <span style="color:var(--partial)">⚠ ${r.partial}</span>` : ''}`
+      : '<span class="muted">—</span>';
+    return `
+      <td><span class="badge cov-${r.status}">${LABEL[r.status]}</span></td>
+      <td>${escapeHtml(r.feature)}</td>
+      <td class="mono">${escapeHtml(r.event_name)}</td>
+      <td class="cov-def">${escapeHtml(r.definition)}</td>
+      <td class="cov-def">${r.valid_value ? escapeHtml(r.valid_value) : '<span class="muted">—</span>'}</td>
+      <td class="bundle-cell">${bundleLiveCell(r)}</td>
+      <td class="mono">${seen}</td>
+      <td class="cov-reason">${escapeHtml(r.reason || '')}${r.flaky_reason
+        ? `<div style="color:var(--partial)">Có lần sai, test lại thì đúng: ${escapeHtml(r.flaky_reason)}</div>` : ''}${r.qa_note
+        ? `<div>${escapeHtml(r.qa_note)}</div>` : ''}${r.pending.length && r.status !== 'NOT_TESTED'
+        ? `<div class="muted" style="margin-top:2px">Chưa thấy (${r.pending.length}/${r.values.length}): ${escapeHtml(r.pending.join(', '))}</div>` : ''}</td>`;
+  }
+
+  panel.render = function() {
+    const d = panel.data;
+    if (!d) return;
+    const sm = d.summary;
+    document.getElementById('cov-total').textContent = sm.total;
+    document.getElementById('cov-passed').textContent = sm.PASSED;
+    document.getElementById('cov-failed').textContent = sm.FAILED;
+    document.getElementById('cov-inprogress').textContent = sm.IN_PROGRESS;
+    document.getElementById('cov-nottested').textContent = sm.NOT_TESTED;
+    const tested = sm.PASSED + sm.FAILED + sm.IN_PROGRESS;
+    const pct = sm.total ? Math.round(tested * 100 / sm.total) : 0;
+    document.getElementById('cov-label').innerHTML = sm.total
+      ? `Đã đụng tới <b>${tested}/${sm.total}</b> (${pct}%) · Passed ${sm.PASSED} · Đang test ${sm.IN_PROGRESS} · Failed ${sm.FAILED}`
+      : 'Chưa có spec.';
+    document.getElementById('cov-bar-part').style.width = (sm.total ? sm.IN_PROGRESS * 100 / sm.total : 0) + '%';
+    document.getElementById('cov-bar-pass').style.width = (sm.total ? sm.PASSED * 100 / sm.total : 0) + '%';
+    document.getElementById('cov-bar-fail').style.width = (sm.total ? sm.FAILED * 100 / sm.total : 0) + '%';
+    panel.badgeEl.textContent = `${sm.PASSED}/${sm.total}`;
+
+    syncFeatures(d.rows);
+    const shown = d.rows.filter(passes);
+    panel.emptyEl.style.display = shown.length ? 'none' : 'block';
+    panel.emptyEl.textContent = d.rows.length ? 'Không có dòng nào khớp bộ lọc.' : 'Chưa có dòng spec nào — thả file spec vào thư mục tracking-spec.';
+    panel.rowsEl.innerHTML = '';
+    for (const r of shown) {
+      const tr = document.createElement('tr');
+      tr.className = 'cov-' + r.status;
+      tr.innerHTML = rowHtml(r);
+      tr._r = r;
+      panel.rowsEl.appendChild(tr);
+    }
+  };
+
+  panel.rowsEl.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.copy-btn');
+    if (!btn) return;
+    const r = btn.closest('tr')._r;
+    if (!r || !r.bundle_live) return;
+    await copyText(bundleLiveCopyText(r.bundle_live));
+    btn.innerHTML = ICON.check;
+    btn.classList.add('ok');
+    setTimeout(() => { btn.innerHTML = ICON.copy; btn.classList.remove('ok'); }, 1200);
+  });
+
+  panel.load = async function() {
+    panel.data = await (await fetch('/api/coverage')).json();
+    panel.render();
+  };
+  panel.clear = function() {};
+
+  panel.statusEl.addEventListener('change', panel.render);
+  panel.featureEl.addEventListener('change', panel.render);
+  panel.searchEl.addEventListener('input', panel.render);
+  document.getElementById(`refresh-${key}`).addEventListener('click', (e) => refreshAll(e.currentTarget));
+  root.querySelectorAll('.export-list a').forEach(a =>
+    a.addEventListener('click', () => setTimeout(() => root.querySelector('.export-menu').removeAttribute('open'), 100)));
+
+  return panel;
+}
+
+let covTimer = null;
+function scheduleCoverage() {
+  clearTimeout(covTimer);
+  covTimer = setTimeout(() => panels.coverage.load().catch(() => {}), 400);
+}
+
+function createErrorPanel(key) {
+  const root = document.getElementById(`panel-${key}`);
+  root.innerHTML = `
+    <div class="summary">
+      <div class="stat unknown"><div class="n" id="s-total-${key}">0</div><div class="l">Total</div></div>
+    </div>
+    <div class="toolbar">
+      <input id="search-${key}" placeholder="Tìm theo tag/package/nội dung lỗi, cách nhau bằng , hoặc |" style="min-width:340px">
+      ${toolbarIcons(key)}
+      <span class="muted">Chỉ hiện crash/lỗi (mức Error/Fatal) của app đang test — tự lọc bỏ lỗi hệ thống Android.</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:200px">Time</th>
+          <th style="width:60px">Level</th>
+          <th style="width:180px">Package</th>
+          <th style="width:140px">Tag</th>
+          <th>Nội dung</th>
+        </tr>
+      </thead>
+      <tbody id="rows-${key}"></tbody>
+    </table>
+    <div id="empty-${key}" class="empty">Chưa có crash/lỗi nào được ghi nhận cho app đang test.</div>
+  `;
+
+  const panel = {
+    key,
+    rowsEl: document.getElementById(`rows-${key}`),
+    emptyEl: document.getElementById(`empty-${key}`),
+    searchEl: document.getElementById(`search-${key}`),
+    badgeEl: document.getElementById(`tabcount-${key}`),
+    paused: false,
+    allEvents: [],
+  };
+
+  function passesFilter(ev) {
+    const raw = panel.searchEl.value.trim();
+    if (!raw) return true;
+    const terms = raw.split(/[,|]/).map(t => t.trim().toLowerCase()).filter(Boolean);
+    if (terms.length === 0) return true;
+    const hay = (ev.tag + ' ' + ev.package + ' ' + ev.message).toLowerCase();
+    return terms.some(t => hay.includes(t));
+  }
+
+  function rowHtml(ev) {
+    return `
+      <td class="mono">${timeCell(ev)}</td>
+      <td><span class="error-badge ${ev.level}">${ev.level === 'F' ? 'FATAL' : 'ERROR'}</span></td>
+      <td class="mono pkg">${escapeHtml(ev.package)}</td>
+      <td class="mono">${escapeHtml(ev.tag)}</td>
+      <td>
+        <div class="bundle-wrap">
+          <div class="bundle-body"><pre class="error-msg mono">${escapeHtml(ev.message)}</pre></div>
+          <button class="copy-btn" title="Copy time + level + tag + nội dung lỗi">${ICON.copy}</button>
+        </div>
+      </td>
+    `;
+  }
+
+  function makeRow(ev) {
+    const tr = document.createElement('tr');
+    tr.className = 'row-' + ev.level;
+    tr.innerHTML = rowHtml(ev);
+    tr._ev = ev;
+    return tr;
+  }
+
+  function updateStats() {
+    panel.badgeEl.textContent = panel.allEvents.length;
+    document.getElementById(`s-total-${key}`).textContent = panel.allEvents.length;
+  }
+
+  panel.addRow = function(ev) {
+    const prev = panel.allEvents[panel.allEvents.length - 1];
+    ev._dt = prev ? evTs(ev) - evTs(prev) : null;
+    panel.allEvents.push(ev);
+    updateStats();
+    if (!passesFilter(ev)) return;
+    panel.emptyEl.style.display = 'none';
+    panel.rowsEl.prepend(makeRow(ev));
+  };
+
+  panel.rerenderAll = function() {
+    panel.rowsEl.innerHTML = '';
+    const filtered = panel.allEvents.filter(passesFilter);
+    panel.emptyEl.style.display = filtered.length ? 'none' : 'block';
+    for (const ev of filtered.slice().reverse()) panel.rowsEl.appendChild(makeRow(ev));
+  };
+
+  panel.rowsEl.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.copy-btn');
+    if (!btn) return;
+    await copyText(copyErrorTextFor(btn.closest('tr')._ev));
+    btn.innerHTML = ICON.check;
+    btn.classList.add('ok');
+    setTimeout(() => { btn.innerHTML = ICON.copy; btn.classList.remove('ok'); }, 1200);
+  });
+
+  panel.clear = function() {
+    panel.allEvents = [];
+    panel.rowsEl.innerHTML = '';
+    panel.emptyEl.style.display = 'block';
+    updateStats();
+  };
+
+  panel.searchEl.addEventListener('input', panel.rerenderAll);
+
+  wireToolbarIcons(panel, key, 'errors');
+
+  return panel;
+}
+
+function createRcPanel(key) {
+  const root = document.getElementById(`panel-${key}`);
+  root.innerHTML = `
+    <div class="summary">
+      <div class="stat"><div class="n" id="s-total-${key}">–</div><div class="l">Keys</div></div>
+      <div class="stat match"><div class="n" id="s-true-${key}">–</div><div class="l">true</div></div>
+      <div class="stat muted"><div class="n" id="s-false-${key}">–</div><div class="l">false</div></div>
+      <div class="stat"><div class="n" id="s-other-${key}">–</div><div class="l">string / number</div></div>
+    </div>
+    <div class="toolbar">
+      <input id="search-${key}" placeholder="Tìm theo key / giá trị, cách nhau bằng , hoặc |" style="min-width:340px">
+      <select id="type-${key}"><option value="">Tất cả kiểu</option></select>
+      <select id="session-${key}" class="rc-session" title="Chọn lần fetch (mỗi lần mở app là 1 lần)"></select>
+      <button class="icon-btn" id="refresh-${key}" title="Refresh — đọc config mới nhất mà server đã thu được">${ICON.refresh}</button>
+      <button class="icon-btn" id="copyall-${key}" title="Copy toàn bộ config đang hiện (JSON)">${ICON.copy}</button>
+      <button class="icon-btn danger" id="clear-${key}" title="Xoá các lần fetch đã thu">${ICON.trash}</button>
+      <span class="muted">Server thu RemoteConfig ở nền khi app mở; chỉ hiện khi bấm vào tab này hoặc Refresh.</span>
+    </div>
+    <div class="rc-meta" id="meta-${key}"></div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:340px">Key</th>
+          <th style="width:80px">Kiểu</th>
+          <th>Giá trị</th>
+        </tr>
+      </thead>
+      <tbody id="rows-${key}"></tbody>
+    </table>
+    <div id="empty-${key}" class="empty"></div>
+  `;
+
+  const $ = (id) => document.getElementById(`${id}-${key}`);
+  const panel = {
+    key, paused: false, rows: [], sessions: [], sessionId: null, pinned: false, loaded: false,
+    rowsEl: $('rows'), emptyEl: $('empty'), searchEl: $('search'), typeEl: $('type'), sessionEl: $('session'),
+    badgeEl: document.getElementById(`tabcount-${key}`),
+  };
+  const EMPTY_UNLOADED = 'Bấm tab này hoặc nút Refresh để xem config app đã fetch.';
+  const EMPTY_NONE = 'Chưa thấy lần fetch RemoteConfig nào — mở app lên, server sẽ tự thu log ở nền (tag RemoteConfigManager).';
+
+  function visibleRows() {
+    const terms = panel.searchEl.value.trim().toLowerCase().split(/[,|]/).map(t => t.trim()).filter(Boolean);
+    const type = panel.typeEl.value;
+    return panel.rows.filter(r => (!type || r.type === type)
+      && (!terms.length || terms.some(t => (r.key + ' ' + r.value).toLowerCase().includes(t))));
+  }
+
+  function valueHtml(r) {
+    if (r.type === 'boolean' && (r.value === 'true' || r.value === 'false')) {
+      return `<span class="badge rc-${r.value}">${r.value}</span>`;
+    }
+    return `<span class="rc-val mono">${escapeHtml(r.value)}</span>`;
+  }
+
+  function renderRows() {
+    const rows = visibleRows();
+    panel.rowsEl.innerHTML = rows.map((r, i) => `
+      <tr data-i="${i}">
+        <td class="mono">${escapeHtml(r.key)}</td>
+        <td class="rc-type mono">${escapeHtml(r.type)}</td>
+        <td><div class="bundle-wrap"><div class="bundle-body">${valueHtml(r)}</div>
+          <button class="copy-btn" title="Copy key: value">${ICON.copy}</button></div></td>
+      </tr>`).join('');
+    panel._shown = rows;
+    panel.emptyEl.style.display = rows.length ? 'none' : 'block';
+    if (!rows.length) panel.emptyEl.textContent = !panel.loaded ? EMPTY_UNLOADED : (panel.rows.length ? 'Không có key nào khớp bộ lọc.' : EMPTY_NONE);
+  }
+
+  function renderStats() {
+    const n = (f) => panel.loaded ? String(panel.rows.filter(f).length) : '–';
+    $('s-total').textContent = n(() => true);
+    $('s-true').textContent = n(r => r.type === 'boolean' && r.value === 'true');
+    $('s-false').textContent = n(r => r.type === 'boolean' && r.value === 'false');
+    $('s-other').textContent = n(r => r.type !== 'boolean');
+    panel.badgeEl.textContent = panel.loaded ? panel.rows.length : '–';
+  }
+
+  function renderSessions() {
+    panel.sessionEl.innerHTML = panel.sessions.map((s, i) => {
+      const t = (s.started || '').slice(5, 23);
+      return `<option value="${s.id}">${i === 0 ? 'Mới nhất · ' : ''}${escapeHtml(t)} · pid ${s.pid} · ${s.count} key · ${s.status}</option>`;
+    }).join('');
+    panel.sessionEl.style.display = panel.sessions.length ? '' : 'none';
+    if (panel.sessionId != null) panel.sessionEl.value = String(panel.sessionId);
+    const cur = panel.sessions.find(s => s.id === panel.sessionId);
+    $('meta').innerHTML = cur
+      ? `Fetch lúc <b>${escapeHtml(cur.started || '—')}</b> · pid ${cur.pid} · ${escapeHtml(cur.package || 'không rõ package')} · `
+        + `<span class="st-${cur.status}">${cur.status}</span>`
+        + (cur.messages.length ? ` · ${cur.messages.map(escapeHtml).join(' → ')}` : '')
+      : '';
+  }
+
+  function renderTypes() {
+    const keep = panel.typeEl.value;
+    const types = [...new Set(panel.rows.map(r => r.type))].sort();
+    panel.typeEl.innerHTML = '<option value="">Tất cả kiểu</option>' + types.map(t => `<option>${escapeHtml(t)}</option>`).join('');
+    panel.typeEl.value = types.includes(keep) ? keep : '';
+  }
+
+  panel.load = async function() {
+    const btn = $('refresh');
+    btn.classList.add('spin');
+    try {
+      const q = panel.pinned && panel.sessionId != null ? `?session=${panel.sessionId}` : '';
+      const j = await (await fetch('/api/rc' + q)).json();
+      panel.sessions = j.sessions; panel.sessionId = j.selected; panel.rows = j.config; panel.loaded = true;
+      if (!panel.sessions.length || panel.sessionId === panel.sessions[0].id) panel.pinned = false;
+      renderSessions(); renderTypes(); renderStats(); renderRows();
+    } finally {
+      setTimeout(() => btn.classList.remove('spin'), 600);
+    }
+  };
+
+  // UI-only reset (loadHistory calls this for every panel); RC data stays on the server until "Xoá".
+  panel.clear = function() {
+    panel.rows = []; panel.sessions = []; panel.sessionId = null; panel.pinned = false; panel.loaded = false;
+    panel.sessionEl.innerHTML = ''; panel.sessionEl.style.display = 'none'; $('meta').innerHTML = '';
+    renderStats(); renderRows();
+  };
+
+  $('refresh').addEventListener('click', () => panel.load().catch(() => {}));
+  $('clear').addEventListener('click', async () => {
+    await fetch('/api/clear', { method: 'POST', body: JSON.stringify({ scope: 'rc' }) });
+    panel.clear();
+    panel.loaded = true; renderStats(); renderRows();
+  });
+  $('copyall').addEventListener('click', async (e) => {
+    const obj = {};
+    for (const r of visibleRows()) obj[r.key] = r.type === 'boolean' ? r.value === 'true' : (r.type === 'long' || r.type === 'double') && r.value !== '' && !isNaN(r.value) ? Number(r.value) : r.value;
+    await copyText(JSON.stringify(obj, null, 2));
+    const btn = e.currentTarget; btn.innerHTML = ICON.check; btn.classList.add('ok');
+    setTimeout(() => { btn.innerHTML = ICON.copy; btn.classList.remove('ok'); }, 1200);
+  });
+  panel.sessionEl.addEventListener('change', () => {
+    panel.sessionId = Number(panel.sessionEl.value);
+    panel.pinned = !!panel.sessions.length && panel.sessionId !== panel.sessions[0].id;
+    panel.load().catch(() => {});
+  });
+  panel.searchEl.addEventListener('input', renderRows);
+  panel.typeEl.addEventListener('change', renderRows);
+  panel.rowsEl.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.copy-btn');
+    if (!btn) return;
+    const r = panel._shown[Number(btn.closest('tr').dataset.i)];
+    await copyText(`${r.key}: ${r.value}`);
+    btn.innerHTML = ICON.check; btn.classList.add('ok');
+    setTimeout(() => { btn.innerHTML = ICON.copy; btn.classList.remove('ok'); }, 1200);
+  });
+
+  panel.clear();
+  return panel;
+}
+
+const panels = {
+  other: createPanel('other', ' (event không phải ads)'),
+  ads: createPanel('ads', ' bắt đầu bằng iaa_'),
+  coverage: createCoveragePanel('coverage'),
+  errors: createErrorPanel('errors'),
+  rc: createRcPanel('rc'),
+};
+
+function routeError(ev) {
+  if (panels.errors.paused) return;
+  panels.errors.addRow(ev);
+}
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(`panel-${btn.dataset.tab}`).classList.add('active');
+    if (btn.dataset.tab === 'rc') panels.rc.load().catch(() => {});  // RC is only read on demand
+  });
+});
+
+function routeEvent(ev) {
+  scheduleCoverage();
+  const panel = isAdsEvent(ev) ? panels.ads : panels.other;
+  if (panel.paused) return;
+  panel.addRow(ev);
+}
+
+async function loadHistory() {
+  const data = await (await fetch('/api/history')).json();
+  for (const p of Object.values(panels)) p.clear();
+  for (const ev of data.events) (isAdsEvent(ev) ? panels.ads : panels.other).addRow(ev);
+  for (const ev of (data.errors || [])) panels.errors.addRow(ev);
+  renderSpec(data.spec);
+  if (data.device) renderDevice(data.device);
+  await panels.coverage.load().catch(() => {});
+}
+
+async function refreshAll(btn) {
+  if (btn) btn.classList.add('spin');
+  try {
+    await fetch('/api/refresh', {method: 'POST'});
+    await loadHistory();
+  } finally {
+    if (btn) setTimeout(() => btn.classList.remove('spin'), 600);
+  }
+}
+
+const statusEl = document.getElementById('status');
+const deviceStatusEl = document.getElementById('device-status');
+
+function deviceLabel(info) {
+  return info.model ? `${info.model} (${info.serial})` : info.serial;
+}
+
+function renderDevice(info) {
+  const state = info.state || 'waiting';
+  deviceStatusEl.className = state;
+  if (state === 'connected') {
+    deviceStatusEl.textContent = `device: ${deviceLabel(info)} (đang tail log)`;
+  } else if (state === 'waiting') {
+    deviceStatusEl.textContent = 'device: đang chờ máy cắm vào...';
+  } else if (state === 'ambiguous') {
+    deviceStatusEl.textContent = 'device: nhiều máy đang cắm — xem dòng status bên dưới';
+  } else if (state === 'disconnected') {
+    deviceStatusEl.textContent = `device: ${deviceLabel(info)} vừa ngắt kết nối`;
+  } else if (state === 'no_adb') {
+    deviceStatusEl.textContent = 'device: không tìm thấy adb';
+  } else {
+    deviceStatusEl.textContent = `device: ${state}`;
+  }
+  mirrorOnDevice(info);
+}
+
+// ---- Screen mirror: raw H.264 over HTTP, decoded with WebCodecs; input via adb; record from a composite canvas ----
+const mirror = { open: false, serial: null, abort: null, decoder: null, retry: null, info: null, subBase: '—' };
+const mEl = {
+  toggle: document.getElementById('mirror-toggle'), canvas: document.getElementById('mirror-canvas'),
+  fx: document.getElementById('mirror-fx'), screen: document.getElementById('mirror-screen'),
+  stage: document.getElementById('mirror-stage'), msg: document.getElementById('mirror-msg'),
+  sub: document.getElementById('mirror-sub'), toast: document.getElementById('mirror-toast'),
+  recBtn: document.getElementById('mirror-rec'), recTimer: document.getElementById('mirror-rec-timer'),
+  shotBtn: document.getElementById('mirror-shot'),
+};
+const mCtx = mEl.canvas.getContext('2d');
+const fxCtx = mEl.fx.getContext('2d');
+let mirrorRatio = 9 / 16;
+// frame timestamps (ms) of the last few thousand decoded frames, for measuring smoothness from the console
+const mirrorStats = window.__mirrorStats = { times: [], maxQueue: 0, fps: 0, count: 0 };
+
+function mirrorPost(path, body) {
+  return fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'tracking-ui' }, body: JSON.stringify(body || {}) })
+    .then(async (r) => { const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`); return j; });
+}
+
+let toastTimer = null;
+function mirrorToast(text, isErr) {
+  mEl.toast.textContent = text;
+  mEl.toast.className = isErr ? 'err' : '';
+  mEl.toast.style.display = 'block';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { mEl.toast.style.display = 'none'; }, isErr ? 8000 : 10000);
+}
+
+function mirrorMsg(text, isErr) {
+  mEl.msg.textContent = text || '';
+  mEl.msg.className = isErr ? 'err' : '';
+  mEl.msg.style.display = text ? 'flex' : 'none';
+  if (text) mEl.screen.style.display = 'none';
+}
+
+function mirrorFit() {
+  const w = mEl.stage.clientWidth, h = mEl.stage.clientHeight;
+  const cw = Math.min(w, h * mirrorRatio);
+  mEl.screen.style.width = cw + 'px';
+  mEl.screen.style.height = (cw / mirrorRatio) + 'px';
+}
+new ResizeObserver(mirrorFit).observe(mEl.stage);
+
+setInterval(() => {  // fps readout
+  const now = performance.now(), t = mirrorStats.times;
+  mirrorStats.fps = t.filter((x) => now - x < 1000).length;
+  if (mirror.open && mEl.screen.style.display === 'block') mEl.sub.textContent = `${mirror.subBase} · ${mirrorStats.fps} fps`;
+}, 1000);
+
+function mirrorStop() {
+  clearTimeout(mirror.retry);
+  if (mirror.abort) mirror.abort.abort();
+  mirror.abort = null;
+  if (mirror.decoder && mirror.decoder.state !== 'closed') { try { mirror.decoder.close(); } catch (e) {} }
+  mirror.decoder = null;
+}
+
+function concatBytes(parts) {
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  let off = 0;
+  for (const p of parts) { out.set(p, off); off += p.length; }
+  return out;
+}
+
+function mirrorRetryLater(text) {
+  mirrorMsg(`${text} — tự thử lại sau 2s`, true);
+  mirror.retry = setTimeout(() => { if (mirror.open) mirrorStart(); }, 2000);
+}
+
+async function mirrorStart() {
+  mirrorStop();
+  if (!('VideoDecoder' in window)) { mirrorMsg('Trình duyệt không hỗ trợ WebCodecs — dùng Chrome / Edge / Safari bản mới.', true); return; }
+  const ctl = new AbortController();
+  mirror.abort = ctl;
+  mirrorMsg('Đang kết nối màn hình máy...');
+  try {
+    const infoRes = await fetch('/api/mirror/info', { signal: ctl.signal });
+    const info = await infoRes.json();
+    if (!infoRes.ok) throw new Error(info.error || `HTTP ${infoRes.status}`);
+    mirror.info = info;
+    mirrorRatio = info.width / info.height;
+    mirror.subBase = `${info.serial} · ${info.width}×${info.height}`;
+    mEl.sub.textContent = mirror.subBase;
+    mirrorFit();
+    const res = await fetch('/api/mirror.h264', { signal: ctl.signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    await mirrorPump(res.body.getReader(), ctl);
+    throw new Error('luồng video đã dừng');
+  } catch (e) {
+    if (!ctl.signal.aborted) mirrorRetryLater(e.message);
+  }
+}
+
+// Splits the Annex-B byte stream into NAL units and feeds one access unit (SPS/PPS + slice) per chunk.
+async function mirrorPump(reader, ctl) {
+  let buf = new Uint8Array(0), pending = [], codec = null, ts = 0, gotFrame = false;
+  const decoder = new VideoDecoder({
+    output(frame) {
+      if (mEl.canvas.width !== frame.displayWidth || mEl.canvas.height !== frame.displayHeight) {
+        mEl.canvas.width = mEl.fx.width = frame.displayWidth;
+        mEl.canvas.height = mEl.fx.height = frame.displayHeight;
+      }
+      mCtx.drawImage(frame, 0, 0);
+      frame.close();
+      const t = mirrorStats.times;
+      t.push(performance.now()); mirrorStats.count++;
+      if (t.length > 6000) t.splice(0, 3000);
+      if (!gotFrame) { gotFrame = true; mirrorMsg(''); mEl.screen.style.display = 'block'; mirrorFit(); }
+    },
+    error(e) { if (!ctl.signal.aborted) { mirrorStop(); mirrorRetryLater(`Lỗi giải mã: ${e.message}`); } },
+  });
+  mirror.decoder = decoder;
+  const hex = (b) => b.toString(16).padStart(2, '0');
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) return;
+    buf = buf.length ? concatBytes([buf, value]) : value;
+    const starts = [];  // offsets of every 00 00 01
+    for (let i = 0; i + 2 < buf.length; i++) {
+      if (buf[i] === 0 && buf[i + 1] === 0 && buf[i + 2] === 1) { starts.push(i); i += 2; }
+    }
+    // the last NAL may still be arriving: only consume the ones followed by another start code
+    for (let k = 0; k + 1 < starts.length; k++) {
+      const nal = buf.subarray(starts[k], starts[k + 1]);
+      const type = nal[3] & 0x1f;
+      if (type !== 1 && type !== 5) {
+        if (type === 7) codec = 'avc1.' + hex(nal[4]) + hex(nal[5]) + hex(nal[6]);
+        pending.push(nal);
+        continue;
+      }
+      const isKey = type === 5;
+      const chunk = concatBytes([...pending, nal]);
+      pending = [];
+      if (decoder.state === 'closed') return;
+      if (decoder.state === 'unconfigured') {
+        if (!isKey || !codec) continue;  // can't start mid-GOP
+        decoder.configure({ codec, optimizeForLatency: true });
+      }
+      mirrorStats.maxQueue = Math.max(mirrorStats.maxQueue, decoder.decodeQueueSize);
+      decoder.decode(new EncodedVideoChunk({ type: isKey ? 'key' : 'delta', timestamp: (ts += 33333), data: chunk }));
+    }
+    if (starts.length) buf = buf.slice(starts[starts.length - 1]);
+  }
+}
+
+// ---- touch input: click = tap, hold = long press, drag = swipe; effects are drawn on #mirror-fx ----
+const ripples = [];
+let drag = null, fxHad = false;
+
+function fracOf(e) {
+  const r = mEl.fx.getBoundingClientRect();
+  return { fx: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), fy: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)) };
+}
+
+function sendInput(cmd) {
+  mirrorPost('/api/mirror/input', cmd).catch((err) => mirrorToast(`Gửi thao tác lỗi: ${err.message}`, true));
+}
+
+mEl.fx.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0 || !mirror.info) return;
+  mEl.fx.setPointerCapture(e.pointerId);
+  const p = fracOf(e);
+  drag = { a: p, b: p, t0: performance.now() };
+});
+mEl.fx.addEventListener('pointermove', (e) => { if (drag) drag.b = fracOf(e); });
+mEl.fx.addEventListener('pointercancel', () => { drag = null; });
+mEl.fx.addEventListener('pointerup', (e) => {
+  if (!drag || !mirror.info) { drag = null; return; }
+  const { a, b, t0 } = drag, ms = performance.now() - t0, W = mirror.info.width, H = mirror.info.height;
+  drag = null;
+  const px = (p) => ({ x: Math.round(p.fx * (W - 1)), y: Math.round(p.fy * (H - 1)) });
+  const A = px(a), B = px(fracOf(e));
+  ripples.push({ fx: fracOf(e).fx, fy: fracOf(e).fy, t: performance.now() });
+  if (Math.hypot(B.x - A.x, B.y - A.y) < 20) {
+    if (ms >= 450) sendInput({ type: 'swipe', x1: A.x, y1: A.y, x2: A.x, y2: A.y, ms: Math.max(600, Math.round(ms)) });  // long press
+    else sendInput({ type: 'tap', x: A.x, y: A.y });
+  } else {
+    sendInput({ type: 'swipe', x1: A.x, y1: A.y, x2: B.x, y2: B.y, ms: Math.min(1500, Math.max(80, Math.round(ms))) });
+  }
+});
+document.querySelectorAll('.mirror-nav button').forEach((btn) =>
+  btn.addEventListener('click', () => sendInput({ type: 'key', name: btn.dataset.key })));
+
+function fxTick() {
+  if (!mirror.open) return;
+  requestAnimationFrame(fxTick);
+  const now = performance.now();
+  while (ripples.length && now - ripples[0].t > 450) ripples.shift();
+  const active = drag || ripples.length;
+  if (!active && !fxHad) return;
+  fxHad = !!active;
+  const W = mEl.fx.width, H = mEl.fx.height, base = W * 0.05;
+  fxCtx.clearRect(0, 0, W, H);
+  fxCtx.lineWidth = Math.max(2, W * 0.006);
+  if (drag) {  // finger down: dot at the current point + line from where it started
+    fxCtx.strokeStyle = 'rgba(255,255,255,.85)'; fxCtx.fillStyle = 'rgba(56,189,248,.45)';
+    fxCtx.beginPath(); fxCtx.moveTo(drag.a.fx * W, drag.a.fy * H); fxCtx.lineTo(drag.b.fx * W, drag.b.fy * H); fxCtx.stroke();
+    fxCtx.beginPath(); fxCtx.arc(drag.b.fx * W, drag.b.fy * H, base * 0.9, 0, 7); fxCtx.fill(); fxCtx.stroke();
+  }
+  for (const r of ripples) {  // release: expanding ring
+    const k = (now - r.t) / 450;
+    fxCtx.strokeStyle = `rgba(255,255,255,${0.9 * (1 - k)})`; fxCtx.fillStyle = `rgba(56,189,248,${0.4 * (1 - k)})`;
+    fxCtx.beginPath(); fxCtx.arc(r.fx * W, r.fy * H, base * (0.9 + k * 1.1), 0, 7); fxCtx.fill(); fxCtx.stroke();
+  }
+}
+
+// ---- record: composite (screen + tap effects) -> MediaRecorder -> server saves it on the Desktop ----
+const rec = { on: false, recorder: null, chunks: [], canvas: null, raf: 0, timer: 0, t0: 0 };
+
+function recPickMime() {
+  for (const [mime, ext] of [['video/mp4;codecs=avc1', 'mp4'], ['video/webm;codecs=vp9', 'webm'], ['video/webm;codecs=vp8', 'webm'], ['video/webm', 'webm']]) {
+    if (window.MediaRecorder && MediaRecorder.isTypeSupported(mime)) return { mime, ext };
+  }
+  return null;
+}
+
+async function recStart() {
+  if (rec.on) return;
+  if (mEl.screen.style.display !== 'block') { mirrorToast('Chưa có hình từ máy để quay.', true); return; }
+  const pick = recPickMime();
+  if (!pick) { mirrorToast('Trình duyệt không hỗ trợ MediaRecorder.', true); return; }
+  try { await mirrorPost('/api/mirror/show-touches', { on: true }); }
+  catch (e) { mirrorToast(`Không bật được Show taps trên máy (${e.message}) — vẫn quay, chỉ thiếu chấm chạm vật lý.`, true); }
+  const w = mEl.canvas.width, h = mEl.canvas.height;
+  rec.canvas = Object.assign(document.createElement('canvas'), { width: w, height: h });
+  const ctx = rec.canvas.getContext('2d');
+  const draw = () => { ctx.drawImage(mEl.canvas, 0, 0, w, h); ctx.drawImage(mEl.fx, 0, 0, w, h); };
+  // setInterval, NOT requestAnimationFrame: rAF is throttled/fully suspended by the browser the
+  // moment this tab isn't the focused/visible one, which silently freezes the recording canvas
+  // while the live decode keeps going — then, on refocus, draw() jumps straight to whatever's
+  // currently decoded. That's the exact "record bị đứng rồi tua đến khúc nào đó" bug. setInterval
+  // keeps firing (Chrome clamps it to ~1/s at worst in a background tab, never fully stops it), so
+  // recording through a background tab is choppy rather than silently skipping a chunk of playback.
+  draw();
+  rec.raf = setInterval(draw, 33);
+  rec.recorder = new MediaRecorder(rec.canvas.captureStream(30), { mimeType: pick.mime, videoBitsPerSecond: 8_000_000 });
+  rec.chunks = [];
+  rec.recorder.ondataavailable = (e) => { if (e.data.size) rec.chunks.push(e.data); };
+  rec.recorder.onstop = () => recUpload(pick.ext, rec.recorder.mimeType);
+  rec.recorder.start(1000);
+  rec.on = true; rec.t0 = Date.now();
+  document.body.classList.add('recording');
+  mEl.recBtn.title = 'Dừng quay và lưu ra Desktop';
+  const tick = () => { const s = Math.floor((Date.now() - rec.t0) / 1000); mEl.recTimer.textContent = String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); };
+  tick(); rec.timer = setInterval(tick, 500);
+}
+
+function recStop() {
+  if (!rec.on) return;
+  rec.on = false;
+  clearInterval(rec.raf); clearInterval(rec.timer);
+  document.body.classList.remove('recording');
+  mEl.recBtn.title = 'Quay video (bật Show taps trên máy) → lưu ra Desktop';
+  rec.recorder.stop();  // -> onstop -> recUpload
+}
+
+async function recUpload(ext, mime) {
+  const blob = new Blob(rec.chunks, { type: mime });
+  rec.chunks = [];
+  mEl.recBtn.disabled = true;
+  mirrorToast('Đang lưu bản quay ra Desktop...');
+  try {
+    const r = await fetch('/api/mirror/save-record?ext=' + ext, { method: 'POST', headers: { 'X-Requested-With': 'tracking-ui' }, body: blob });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+    mirrorToast(`Đã lưu: ${j.path}`);
+  } catch (e) {
+    mirrorToast(`Lưu bản quay lỗi: ${e.message}`, true);
+  } finally {
+    mEl.recBtn.disabled = false;
+    mirrorPost('/api/mirror/show-touches', { on: false }).catch(() => {});  // restore the phone's original setting
+  }
+}
+
+mEl.recBtn.addEventListener('click', () => (rec.on ? recStop() : recStart()));
+mEl.shotBtn.addEventListener('click', async () => {
+  mEl.shotBtn.disabled = true;
+  mirrorToast('Đang chụp...');
+  try { mirrorToast(`Đã lưu: ${(await mirrorPost('/api/mirror/screenshot')).path}`); }
+  catch (e) { mirrorToast(`Chụp lỗi: ${e.message}`, true); }
+  finally { mEl.shotBtn.disabled = false; }
+});
+
+// ---- panel open/close/resize + device switching ----
+function mirrorSetOpen(open) {
+  mirror.open = open;
+  document.body.classList.toggle('mirror-open', open);
+  try { localStorage.setItem('mirrorOpen', open ? '1' : '0'); } catch (e) {}
+  if (!open) { recStop(); mirrorStop(); return; }
+  requestAnimationFrame(fxTick);
+  if (mirror.serial) mirrorStart(); else mirrorMsg('Chưa có máy nào đang kết nối.', true);
+}
+
+function mirrorOnDevice(info) {
+  const serial = info.state === 'connected' ? info.serial : null;
+  if (serial === mirror.serial) return;
+  mirror.serial = serial;
+  if (!mirror.open) return;
+  recStop();
+  if (serial) mirrorStart(); else { mirrorStop(); mirrorMsg('Chưa có máy nào đang kết nối.', true); }
+}
+
+mEl.toggle.addEventListener('click', () => mirrorSetOpen(!mirror.open));
+document.getElementById('mirror-close').addEventListener('click', () => mirrorSetOpen(false));
+document.getElementById('mirror-restart').addEventListener('click', () => { if (mirror.serial) mirrorStart(); });
+
+function mirrorSetWidth(px) {
+  document.documentElement.style.setProperty('--mirror-w', px + 'px');
+  try { localStorage.setItem('mirrorW', String(px)); } catch (e) {}
+}
+try { const w = parseInt(localStorage.getItem('mirrorW'), 10); if (w >= 280) mirrorSetWidth(w); } catch (e) {}
+const resizer = document.getElementById('mirror-resize');
+resizer.addEventListener('pointerdown', (e) => { resizer.setPointerCapture(e.pointerId); resizer.classList.add('drag'); });
+resizer.addEventListener('pointermove', (e) => {
+  if (!resizer.classList.contains('drag')) return;
+  mirrorSetWidth(Math.round(Math.max(280, Math.min(window.innerWidth * 0.7, window.innerWidth - e.clientX))));
+});
+resizer.addEventListener('pointerup', () => resizer.classList.remove('drag'));
+
+function connect() {
+  const es = new EventSource('/events');
+  es.addEventListener('open', () => { statusEl.textContent = 'Đã kết nối'; statusEl.className = 'connected'; });
+  es.addEventListener('error', () => { statusEl.textContent = 'Mất kết nối, đang thử lại...'; statusEl.className = 'error'; });
+  es.addEventListener('status', (e) => { document.getElementById('status-message').textContent = JSON.parse(e.data).message; });
+  es.addEventListener('device', (e) => { renderDevice(JSON.parse(e.data)); });
+  es.addEventListener('spec', (e) => renderSpec(JSON.parse(e.data)));
+  es.addEventListener('track', (e) => routeEvent(JSON.parse(e.data)));
+  es.addEventListener('coverage', () => scheduleCoverage());
+  es.addEventListener('error_log', (e) => routeError(JSON.parse(e.data)));
+}
+
+// ---- self-update: only shown when this checkout is a git clone (colleagues running from a
+// zip / non-git copy just don't see the box — nothing to update against) ----
+const updEl = { box: document.getElementById('update-box'), ver: document.getElementById('update-ver'), btn: document.getElementById('update-btn') };
+let updBusy = false, updCommit = null;
+
+function updLabel(text, busy) {
+  updEl.btn.textContent = text;
+  updBusy = !!busy;
+  updEl.btn.classList.toggle('busy', updBusy);
+}
+
+async function updLoadVersion() {
+  let v;
+  try { v = await (await fetch('/api/version')).json(); } catch (e) { return null; }
+  if (!v.is_repo) { updEl.box.style.display = 'none'; return null; }
+  updEl.box.style.display = 'inline-flex';
+  updCommit = v.commit;
+  updEl.ver.textContent = 'v' + (v.commit || '?') + (v.dirty ? '*' : '');
+  updEl.ver.title = [v.branch && `nhánh ${v.branch}`, v.date, v.dirty ? '(có sửa tay chưa commit)' : '']
+    .filter(Boolean).join(' · ');
+  return v;
+}
+
+async function updAfterRestart(prevCommit) {
+  updLabel('Đang khởi động lại...', true);
+  for (let i = 0; i < 20; i++) {
+    await new Promise(r => setTimeout(r, 1000));
+    const v = await updLoadVersion();
+    if (v && v.commit !== prevCommit) { location.reload(); return; }
+  }
+  updLabel('Update', false);  // took too long — let the user check the terminal / try again
+}
+
+updEl.btn.addEventListener('click', async () => {
+  if (updBusy) return;
+  updLabel('Đang kiểm tra...', true);
+  let chk;
+  try { chk = await (await fetch('/api/check-update')).json(); }
+  catch (e) { chk = { checked: false, error: e.message }; }
+  if (!chk.checked) {
+    alert(`Không kiểm tra được bản mới: ${chk.error || 'lỗi không rõ'}`);
+    updLabel('Update', false);
+    return;
+  }
+  if (!chk.update_available) {
+    updLabel('Đã mới nhất', false);
+    setTimeout(() => { if (!updBusy) updLabel('Update', false); }, 2000);
+    return;
+  }
+  if (!confirm(`Có bản mới (sau ${chk.behind} commit).\n\nCập nhật và khởi động lại server ngay bây giờ?`)) {
+    updLabel('Update', false);
+    return;
+  }
+  updLabel('Đang cập nhật...', true);
+  const prevCommit = updCommit;
+  let res;
+  try { res = await (await fetch('/api/self-update', { method: 'POST' })).json(); }
+  catch (e) { res = { ok: false, error: e.message }; }
+  if (!res.ok) {
+    alert(`Update lỗi:\n\n${res.error || 'lỗi không rõ'}`);
+    updLabel('Update', false);
+    return;
+  }
+  if (!res.restarted) {
+    updLabel('Đã mới nhất', false);
+    setTimeout(() => { if (!updBusy) updLabel('Update', false); }, 2000);
+    return;
+  }
+  updAfterRestart(prevCommit);
+});
+
+updLoadVersion().catch(() => {});
+
+try { if (localStorage.getItem('mirrorOpen') === '1') mirrorSetOpen(true); } catch (e) {}
+loadHistory().then(connect).catch(connect);
+</script>
+</body>
+</html>
