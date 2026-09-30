@@ -695,13 +695,20 @@ def self_update():
     if info["dirty"]:
         return {"ok": False, "error": "Có thay đổi chưa commit trong thư mục tool — tự update bị chặn để khỏi mất "
                                       "thay đổi đó. Nhờ dev kiểm tra (git status) rồi update tay."}
+    old_commit = info["commit"]
     pull = _git("pull", "--ff-only", timeout=60)
     if pull.returncode != 0:
         return {"ok": False, "error": (pull.stderr or pull.stdout).strip()[-500:] or "git pull lỗi"}
     if "Already up to date" in pull.stdout:
         return {"ok": True, "restarted": False, "message": "Đã ở bản mới nhất."}
+    # Restarting the Python process (os.execv, below) is NOT enough when the update also touched
+    # the native .app wrapper itself (Auto Tracking Test.app/...) — that binary is already loaded
+    # into the currently-running wrapper process's memory, so only fully quitting and reopening
+    # the app picks up the new one. Tell the caller so it can show that instead of just reloading.
+    changed = _git("diff", "--name-only", f"{old_commit}..HEAD")
+    app_changed = any(line.startswith("Auto Tracking Test.app/") for line in changed.stdout.splitlines())
     threading.Timer(0.4, _restart_self).start()  # after this HTTP response is safely sent
-    return {"ok": True, "restarted": True, "message": pull.stdout.strip()}
+    return {"ok": True, "restarted": True, "app_changed": app_changed, "message": pull.stdout.strip()}
 
 
 def fetch_spec_from_lark(folder):

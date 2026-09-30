@@ -1705,6 +1705,16 @@ updEl.btn.addEventListener('click', async () => {
     setTimeout(() => { if (!updBusy) updLabel('Update', false); }, 2000);
     return;
   }
+  if (res.app_changed) {
+    // Lần này đổi cả phần vỏ app (Auto Tracking Test.app) — server đã tự restart, nhưng tiến
+    // trình app đang chạy vẫn là bản cũ đã nạp sẵn vào bộ nhớ từ lúc mở app, ghi đè file trên đĩa
+    // không đổi được nó. Phải Quit hẳn rồi mở lại app mới dùng đúng bản mới.
+    alert('Đã tải xong bản mới.\n\nLần này có sửa cả phần vỏ app — cần Quit app (Cmd+Q) rồi mở lại '
+        + '(double-click "Auto Tracking Test.app") để dùng đúng bản mới. Chỉ lần này cần làm vậy, '
+        + 'các lần cập nhật sau (không đổi phần vỏ) sẽ tự xong mà không cần Quit.');
+    updLabel('Update', false);
+    return;
+  }
   updAfterRestart(prevCommit);
 });
 

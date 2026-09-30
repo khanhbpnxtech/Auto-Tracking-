@@ -102,6 +102,47 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNavigationDe
         NSApp.terminate(nil)
     }
 
+    // ---- WKUIDelegate: bridge JS alert()/confirm()/prompt() to real dialogs ----
+    //
+    // WKWebView does NOTHING for these by default unless the delegate implements them — a page's
+    // alert()/confirm() call just silently no-ops (confirm() returns as if the user hit Cancel,
+    // no dialog ever appears). That's exactly what broke the dashboard's Update button: it calls
+    // confirm("Có bản mới... cập nhật ngay?") before pulling, which silently came back "false"
+    // here with no visible dialog at all, so every click looked like nothing happened.
+
+    func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
+                initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
+        let alert = NSAlert()
+        alert.messageText = "Auto Tracking Test"
+        alert.informativeText = message
+        alert.runModal()
+        completionHandler()
+    }
+
+    func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String,
+                initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) {
+        let alert = NSAlert()
+        alert.messageText = "Auto Tracking Test"
+        alert.informativeText = message
+        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "Cancel")
+        completionHandler(alert.runModal() == .alertFirstButtonReturn)
+    }
+
+    func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String,
+                defaultText: String?, initiatedByFrame frame: WKFrameInfo,
+                completionHandler: @escaping (String?) -> Void) {
+        let alert = NSAlert()
+        alert.messageText = "Auto Tracking Test"
+        alert.informativeText = prompt
+        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "Cancel")
+        let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
+        input.stringValue = defaultText ?? ""
+        alert.accessoryView = input
+        completionHandler(alert.runModal() == .alertFirstButtonReturn ? input.stringValue : nil)
+    }
+
     // ---- server lifecycle: same logic the old bash launcher had, ported to Process ----
 
     func ensureServerRunning(completion: @escaping (Bool) -> Void) {
