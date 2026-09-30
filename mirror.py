@@ -188,8 +188,14 @@ def stream(serial, write):
             if not _device_present(serial):
                 return
             if quick_failures % 5 == 0:  # throttled — this can otherwise repeat many times/minute
-                print(f"[mirror] {serial}: screenrecord đang bị giữ codec (thất bại nhanh x{quick_failures}) — vẫn đang chờ")
-            time.sleep(max(0, 1 - elapsed))
+                print(f"[mirror] {serial}: screenrecord đang bị giữ codec (thất bại nhanh x{quick_failures}) — vẫn đang chờ",
+                      flush=True)
+            # Back off the longer this drags on — hammering spawn+`pkill -9` back-to-back for a
+            # sustained contention (rather than one quick blip) is itself hard on the USB link,
+            # confirmed on-device: the device dropped off `adb devices` entirely mid-churn once
+            # during testing. Capped at 5s so a real, brief contention still recovers quickly.
+            backoff = min(5, 1 + quick_failures * 0.3)
+            time.sleep(max(0, backoff - elapsed))
     finally:
         with _active_guard:
             if _active.get(serial, {}).get("epoch") == my_epoch:
