@@ -40,7 +40,17 @@ trên máy mới, macOS có thể hỏi cấp quyền truy cập thư mục (Des
 
 Sửa xong `native/AutoTrackingApp.swift` thì biên dịch lại bằng `native/build.sh` (cần Xcode
 Command Line Tools, có `swiftc` sẵn) rồi commit cả app đã build — đồng nghiệp không cần tự biên
-dịch gì, bấm Update là nhận app mới luôn.
+dịch gì, bấm Update là nhận app mới luôn. `build.sh` build universal (Intel + Apple Silicon) và
+ghim sẵn `-target macosx11.0` — swiftc không có cờ này sẽ tự lấy SDK máy đang build làm bản macOS
+tối thiểu bắt buộc, nên build trên máy cài macOS/Xcode mới sẽ ra app không mở được trên máy đồng
+nghiệp còn dùng macOS cũ hơn (báo "You can't use this version of the application..." dù
+`LSMinimumSystemVersion` trong Info.plist ghi 11.0 — key đó chỉ mang tính khai báo, không phải
+cái macOS thật sự kiểm tra).
+
+> Nếu đồng nghiệp gặp đúng lỗi "You can't use this version of the application 'Auto Tracking
+> Test' with this version of macOS" khi mở app: bản họ đang có build từ trước khi `build.sh` ghim
+> `-target` (chưa có fix này) — cần `git pull` (qua Terminal, vì lúc này app còn chưa mở được để
+> tự bấm Update) rồi mở lại.
 
 > Đã kiểm chứng: cửa sổ hiện đúng, dashboard tải và chạy đúng bên trong (đọc bằng Accessibility
 > API vì môi trường build không chụp được ảnh màn hình), quit app tắt server đúng như mong đợi.
