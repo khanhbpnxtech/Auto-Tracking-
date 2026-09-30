@@ -28,11 +28,25 @@ Chỉ cần cài tay thêm khi:
   ffmpeg của Homebrew phụ thuộc ~18 thư viện khác. Thiếu thì mọi thứ khác vẫn chạy bình thường,
   chỉ riêng bước "sửa file mp4 để Trim được" bị bỏ qua.
 
-### Desktop App (mở 1 cú nhấp, không cần mở Terminal)
+### Desktop App (mở 1 cú nhấp, cửa sổ riêng — không phải mở trình duyệt)
 
 Trong thư mục vừa clone có sẵn **`Auto Tracking Test.app`** — double-click để chạy: tự bật
-server (nếu chưa chạy) rồi mở dashboard trên trình duyệt. Lần đầu chạy trên máy mới, macOS có
-thể hỏi cấp quyền truy cập thư mục (Desktop/Documents...) — bấm **Allow/Cho phép**.
+server (nếu chưa chạy) rồi hiện dashboard trong **1 cửa sổ app thật** (dùng WKWebView của macOS,
+`native/AutoTrackingApp.swift`) — không thanh địa chỉ, không tab, không phải Safari/Chrome. Quit
+app (Cmd+Q hoặc đóng cửa sổ) thì server cũng tự tắt theo (nếu chính app này khởi động nó — server
+ai đang chạy sẵn từ trước, vd. dev chạy tay qua Terminal, thì không bị đụng vào). Lần đầu chạy
+trên máy mới, macOS có thể hỏi cấp quyền truy cập thư mục (Desktop/Documents...) — bấm
+**Allow/Cho phép**.
+
+Sửa xong `native/AutoTrackingApp.swift` thì biên dịch lại bằng `native/build.sh` (cần Xcode
+Command Line Tools, có `swiftc` sẵn) rồi commit cả app đã build — đồng nghiệp không cần tự biên
+dịch gì, bấm Update là nhận app mới luôn.
+
+> Đã kiểm chứng: cửa sổ hiện đúng, dashboard tải và chạy đúng bên trong (đọc bằng Accessibility
+> API vì môi trường build không chụp được ảnh màn hình), quit app tắt server đúng như mong đợi.
+> Riêng tính năng **Màn hình máy** (giải mã video bằng WebCodecs) chưa tự bấm-thử được trong
+> WKWebView ở môi trường này — nên bấm thử tab đó 1 lần sau khi cài, nếu không hiện hình thì báo
+> lại (Safari/WebKit bản máy bạn có thể chưa hỗ trợ đủ WebCodecs).
 
 App tự thêm `Contents/Resources/vendor/bin` (adb) và `vendor/python` (openpyxl) vào
 PATH/PYTHONPATH trước khi chạy `server.py` — đã kiểm chứng bằng cách giả lập máy trắng (không
