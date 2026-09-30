@@ -15,7 +15,7 @@ from urllib.parse import parse_qs, urlparse
 
 import mirror
 import report
-from logtail import TrackingRunner
+from logtail import TrackingRunner, list_authorized_devices, query_device_model
 import spec_store
 from spec_store import SpecStore, match_event
 
@@ -103,6 +103,60 @@ def on_status(message):
 def on_device(info):
     state["device"] = info
     broadcast("device", info)
+
+
+def list_devices_with_model():
+    """All currently authorized devices (physical + emulator), for the device picker — like
+    Android Studio's "Running Devices" list. Separate from TrackingRunner's own single-device
+    auto-pick/ambiguous logic; this is just "what's out there right now"."""
+    serials = list_authorized_devices() or []
+    return [{"serial": s, "model": query_device_model(s), "is_emulator": s.startswith("emulator-")}
+            for s in serials]
+
+
+def _android_sdk_dir():
+    for candidate in (os.environ.get("ANDROID_HOME"), os.environ.get("ANDROID_SDK_ROOT"),
+                      str(Path.home() / "Library" / "Android" / "sdk")):
+        if candidate and Path(candidate).is_dir():
+            return Path(candidate)
+    return None
+
+
+def _emulator_bin():
+    sdk = _android_sdk_dir()
+    if not sdk:
+        return None
+    exe = sdk / "emulator" / "emulator"
+    return exe if exe.exists() else None
+
+
+def list_avds():
+    """Existing Android Virtual Devices already set up (via Android Studio's own Device Manager,
+    or `avdmanager`) — we only launch these, we don't create new ones: picking a system image,
+    RAM, storage etc. is squarely Android Studio's job and needs multi-GB image downloads, not
+    something this tool should try to reimplement."""
+    exe = _emulator_bin()
+    if not exe:
+        return {"ok": False, "error": "Không tìm thấy Android SDK (thư mục emulator/) — cần cài "
+                                      "Android Studio và tạo ít nhất 1 AVD trước."}
+    try:
+        out = subprocess.run([str(exe), "-list-avds"], capture_output=True, text=True, timeout=10)
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+    names = [line.strip() for line in out.stdout.splitlines() if line.strip()]
+    return {"ok": True, "avds": names}
+
+
+def launch_avd(name):
+    exe = _emulator_bin()
+    if not exe:
+        return {"ok": False, "error": "Không tìm thấy Android SDK (thư mục emulator/)."}
+    try:
+        subprocess.Popen([str(exe), "-avd", name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         stdin=subprocess.DEVNULL, start_new_session=True)
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+    return {"ok": True, "message": f"Đang khởi động máy ảo {name}... (mất khoảng 1-2 phút)"}
 
 
 def match_fields(event_name, bundle):
@@ -396,6 +450,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json(check_remote_update())
         if self.path == "/api/device":
             return self._send_json(state["device"])
+        if self.path == "/api/devices":
+            return self._send_json({"devices": list_devices_with_model()})
+        if self.path == "/api/avds":
+            return self._send_json(list_avds())
         if self.path in ("/api/mirror/info", "/api/mirror.h264"):
             return self._serve_mirror()
         if self.path == "/api/coverage":
@@ -509,6 +567,30 @@ class Handler(BaseHTTPRequestHandler):
             return self._post_mirror()
         if self.path == "/api/self-update":
             return self._send_json(self_update())
+        if self.path == "/api/select-device":
+            if not self._local_only():
+                return
+            length = int(self.headers.get("Content-Length") or 0)
+            try:
+                serial = json.loads(self.rfile.read(length) or b"{}").get("serial") or None
+            except ValueError:
+                return self._send_json({"ok": False, "error": "body không hợp lệ"}, status=400)
+            runner = _runner_ref["runner"]
+            if runner is None:
+                return self._send_json({"ok": False, "error": "runner chưa sẵn sàng"})
+            runner.preferred_serial = serial
+            return self._send_json({"ok": True})
+        if self.path == "/api/launch-avd":
+            if not self._local_only():
+                return
+            length = int(self.headers.get("Content-Length") or 0)
+            try:
+                name = json.loads(self.rfile.read(length) or b"{}").get("name")
+            except ValueError:
+                name = None
+            if not name:
+                return self._send_json({"ok": False, "error": "cần {name}"}, status=400)
+            return self._send_json(launch_avd(name))
         if self.path == "/api/reload":
             store = state["spec_store"]
             if store is None:

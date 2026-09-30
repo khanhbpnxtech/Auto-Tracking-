@@ -172,6 +172,12 @@ class TrackingRunner(threading.Thread):
         self._procs = []
         self.current_serial = None
         self._last_wait_state = None
+        # User's live pick from the device dropdown (like Android Studio's "Running Devices") when
+        # more than one device is plugged in — set from outside via the /api/select-device route,
+        # checked fresh every poll so switching takes effect on the next cycle. Different from
+        # serial_override (a fixed --serial CLI flag): this can change anytime and is simply
+        # ignored, not an error, whenever the picked device isn't actually connected right now.
+        self.preferred_serial = None
         self._pkg_resolver = PackageResolver()
         self.active_packages = set()
 
@@ -187,11 +193,20 @@ class TrackingRunner(threading.Thread):
             return "NO_ADB"
         if self.serial_override:
             return self.serial_override if self.serial_override in devices else "WAITING"
+        if self.preferred_serial and self.preferred_serial in devices:
+            return self.preferred_serial
         if len(devices) == 1:
             return devices[0]
         if len(devices) == 0:
             return "WAITING"
         return ("AMBIGUOUS", tuple(devices))
+
+    def _should_switch_away(self, serial, current_devices):
+        """True once the user has picked a *different, currently-connected* device from the
+        dropdown — checked periodically from inside _tail_one_device's own loop so a live switch
+        doesn't have to wait for the current device to be unplugged first (unlike serial_override,
+        preferred_serial is meant to change anytime)."""
+        return bool(self.preferred_serial) and self.preferred_serial != serial and self.preferred_serial in current_devices
 
     def run(self):
         while not self._stop.is_set():
@@ -212,7 +227,7 @@ class TrackingRunner(threading.Thread):
                 _, candidates = target
                 self._emit_wait("AMBIGUOUS",
                                  f"Có {len(candidates)} device đang cắm ({', '.join(candidates)}) — "
-                                 f"rút bớt còn 1 máy, hoặc chạy lại server với --serial <serial>.")
+                                 f"chọn 1 máy ở ô chọn device phía trên.")
                 time.sleep(self.poll_interval)
                 continue
 
@@ -226,9 +241,12 @@ class TrackingRunner(threading.Thread):
             label = f"{model} ({target})" if model else target
             self.on_status(f"Phát hiện device {label}, bắt đầu tail log (tag={self.tag})...")
             self._tail_one_device(target)
+            switched = self.preferred_serial and self.preferred_serial != target
             self.current_serial = None
             self.on_device({"state": "disconnected", "serial": target, "model": model})
-            if not self._stop.is_set():
+            if switched:
+                self.on_status(f"Đã chuyển sang device khác theo lựa chọn — dừng tail {target}.")
+            elif not self._stop.is_set():
                 self.on_status(f"Device {target} đã ngắt kết nối, đang chờ device khác...")
 
     def _emit_wait(self, state, message):
@@ -331,8 +349,8 @@ class TrackingRunner(threading.Thread):
                     if now - last_check >= self.poll_interval:
                         last_check = now
                         current = list_authorized_devices()
-                        if current is not None and serial not in current:
-                            break  # device unplugged / swapped
+                        if current is not None and (serial not in current or self._should_switch_away(serial, current)):
+                            break  # device unplugged / swapped, or user picked a different one
                     continue
 
                 if line is None:
@@ -381,8 +399,8 @@ class TrackingRunner(threading.Thread):
                 if now - last_check >= self.poll_interval:
                     last_check = now
                     current = list_authorized_devices()
-                    if current is not None and serial not in current:
-                        break  # device unplugged / swapped
+                    if current is not None and (serial not in current or self._should_switch_away(serial, current)):
+                        break  # device unplugged / swapped, or user picked a different one
         finally:
             flush_stale_errors(force=True)
             for proc in (proc_track, proc_error, proc_rc):

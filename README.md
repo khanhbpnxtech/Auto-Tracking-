@@ -147,9 +147,18 @@ truyền gì thêm nếu bạn theo đúng bước ở mục 1.
 - Cắm điện thoại qua USB, bật USB debugging, bấm "Allow" trên máy.
 - **Server tự động nhận device đang cắm tại thời điểm đó** — không cần chỉ định trước.
   Rút máy ra / cắm máy khác vào giữa chừng, server tự phát hiện và chuyển sang tail log của
-  máy mới mà không cần restart. Nếu đang có nhiều hơn 1 device cùng lúc, server sẽ chờ và báo
-  trạng thái "nhiều máy" trên dashboard — rút bớt còn 1 máy, hoặc chạy lại với `--serial <serial>`
-  để ghim cố định vào 1 máy cụ thể (hữu ích khi bạn luôn cắm nhiều máy song song).
+  máy mới mà không cần restart.
+- **Nhiều device cùng lúc (như "Running Devices" của Android Studio):** góc trên phải dashboard
+  tự hiện thêm 1 ô chọn device ngay khi có từ 2 máy/máy ảo trở lên đang cắm — chọn máy nào thì
+  server chuyển sang tail log máy đó ngay lập tức, không cần rút máy hay restart. Không chọn gì
+  (để "— tự chọn —") thì quay lại hành vi mặc định: tự nhận nếu chỉ có 1 máy, hoặc chờ bạn chọn
+  nếu có nhiều máy. Cũng có thể ghim cứng bằng `--serial <serial>` khi chạy server (không đổi qua
+  ô chọn được nữa, ưu tiên cao nhất — dùng khi CHỈ muốn 1 máy cố định dù cắm thêm máy khác).
+- **Máy ảo (emulator):** dashboard tự liệt kê các AVD đã tạo sẵn trong Android Studio (nút "Chạy
+  máy ảo" cạnh ô chọn device, chỉ hiện khi máy có cài Android SDK + đã có AVD) — bấm là khởi động,
+  mất khoảng 1-2 phút. Tool này **không tạo AVD mới được** (chọn system image, RAM, dung lượng...
+  là việc của Android Studio, cần tải image nặng vài GB) — mở Android Studio → Device Manager để
+  tạo AVD mới, sau đó quay lại đây là thấy ngay trong danh sách.
 - Mặc định lọc log theo tag `TrackingEvent` (đổi bằng `--tag`).
 - Mở trình duyệt: **http://127.0.0.1:8765** — góc trên phải dashboard luôn hiện tên model +
   serial của device đang tail log realtime (vd: `TECNO KM4 (148427055L008212)`).

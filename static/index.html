@@ -275,6 +275,18 @@
     border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .6s linear infinite;
   }
 
+  #device-picker {
+    height: 26px; padding: 0 6px; font-size: 11.5px; margin-top: 3px;
+    background: var(--bg); color: var(--text); border: 1px solid var(--partial); border-radius: 6px; cursor: pointer;
+  }
+  .avd-box { display: inline-flex; align-items: center; gap: 6px; margin-top: 3px; }
+  .avd-box select, .avd-btn {
+    height: 24px; padding: 0 6px; font-size: 11px;
+    background: var(--bg); color: var(--muted); border: 1px solid var(--border); border-radius: 6px; cursor: pointer;
+  }
+  .avd-btn:hover { border-color: #64748b; color: var(--text); }
+  .avd-btn:disabled { opacity: .5; cursor: default; }
+
   .badge.rc-true { background: rgba(34,197,94,.15); color: var(--match); }
   .badge.rc-false { background: rgba(148,163,184,.15); color: var(--muted); }
   .rc-type { font-size: 11px; color: var(--muted); }
@@ -351,6 +363,11 @@
   <div style="text-align:right">
     <div id="status">Đang kết nối...</div>
     <div id="device-status" class="muted" style="font-size:11.5px; margin-top:2px;">device: —</div>
+    <select id="device-picker" title="Chọn device khi có nhiều máy đang cắm" style="display:none"></select>
+    <div class="avd-box" id="avd-box" style="display:none">
+      <select id="avd-select" title="Máy ảo đã tạo sẵn (từ Android Studio)"></select>
+      <button class="avd-btn" id="avd-launch-btn" title="Khởi động máy ảo này">Chạy máy ảo</button>
+    </div>
     <div id="status-message" class="muted" style="font-size:11px; margin-top:2px; max-width:420px;"></div>
   </div>
 </header>
@@ -1309,6 +1326,64 @@ function renderDevice(info) {
   }
   mirrorOnDevice(info);
 }
+
+// ---- device picker: like Android Studio's "Running Devices" — only shown when 2+ devices ----
+const devicePickerEl = document.getElementById('device-picker');
+let devicePickerBusy = false;
+
+async function refreshDevicePicker() {
+  if (devicePickerBusy) return;  // don't fight the user mid-select
+  let devices;
+  try { devices = (await (await fetch('/api/devices')).json()).devices || []; }
+  catch (e) { return; }
+  if (devices.length < 2) { devicePickerEl.style.display = 'none'; return; }
+  const current = devicePickerEl.value;
+  devicePickerEl.innerHTML = '<option value="">— tự chọn (1 máy) —</option>' + devices.map((d) =>
+    `<option value="${d.serial}">${d.is_emulator ? '🤖 ' : '📱 '}${d.model || d.serial} (${d.serial})</option>`
+  ).join('');
+  devicePickerEl.value = devices.some((d) => d.serial === current) ? current : '';
+  devicePickerEl.style.display = 'inline-block';
+}
+
+devicePickerEl.addEventListener('change', async () => {
+  devicePickerBusy = true;
+  try {
+    await fetch('/api/select-device', { method: 'POST', body: JSON.stringify({ serial: devicePickerEl.value || null }) });
+  } finally {
+    devicePickerBusy = false;
+  }
+});
+
+setInterval(refreshDevicePicker, 4000);
+refreshDevicePicker();
+
+// ---- AVD launcher: start an emulator ALREADY created in Android Studio — creating a brand new
+// one needs picking a system image (multi-GB download) and belongs in Android Studio itself ----
+const avdEl = { box: document.getElementById('avd-box'), select: document.getElementById('avd-select'), btn: document.getElementById('avd-launch-btn') };
+
+async function loadAvds() {
+  let res;
+  try { res = await (await fetch('/api/avds')).json(); } catch (e) { return; }
+  if (!res.ok || !res.avds || !res.avds.length) return;  // no SDK / no AVDs — stay hidden, nothing to offer
+  avdEl.select.innerHTML = res.avds.map((name) => `<option value="${name}">${name}</option>`).join('');
+  avdEl.box.style.display = 'inline-flex';
+}
+
+avdEl.btn.addEventListener('click', async () => {
+  avdEl.btn.disabled = true;
+  const name = avdEl.select.value;
+  try {
+    const res = await (await fetch('/api/launch-avd', { method: 'POST', body: JSON.stringify({ name }) })).json();
+    if (!res.ok) throw new Error(res.error || 'lỗi không rõ');
+    avdEl.btn.textContent = 'Đang khởi động...';
+    setTimeout(() => { avdEl.btn.textContent = 'Chạy máy ảo'; avdEl.btn.disabled = false; }, 8000);
+  } catch (e) {
+    alert(`Không khởi động được máy ảo:\n\n${e.message}`);
+    avdEl.btn.disabled = false;
+  }
+});
+
+loadAvds();
 
 // ---- Screen mirror: raw H.264 over HTTP, decoded with WebCodecs; input via adb; record from a composite canvas ----
 const mirror = { open: false, serial: null, abort: null, decoder: null, retry: null, info: null, subBase: '—' };
