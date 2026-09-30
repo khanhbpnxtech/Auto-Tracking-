@@ -64,6 +64,17 @@ def _screen_awake(serial):
         return True
 
 
+def _device_present(serial):
+    """adb still sees this serial at all — a real disconnect (unplugged, USB flake) vs. the device
+    being there but momentarily unable to record (see `stream`'s quick-failure handling below)."""
+    try:
+        out = subprocess.run(["adb", "-s", serial, "get-state"],
+                             capture_output=True, text=True, timeout=5).stdout.strip()
+        return out == "device"
+    except Exception:
+        return False
+
+
 def _kill_remote_screenrecord(serial):
     """`adb exec-out screenrecord` does NOT reliably kill the actual screenrecord process running
     on the DEVICE when the local adb client is killed/dies — exec-out allocates no pty and doesn't
@@ -92,7 +103,7 @@ _active_guard = threading.Lock()
 
 
 def stream(serial, write):
-    """Pipe H.264 to `write(bytes)` until it raises (client gone) or screenrecord keeps failing.
+    """Pipe H.264 to `write(bytes)` until it raises (client gone) or the device disappears.
 
     Pre-empts on every call: a client reconnecting (page reload with the panel remembered open,
     "Kết nối lại", a dropped-then-retried fetch) can call this again before the OLD call has
@@ -101,7 +112,19 @@ def stream(serial, write):
     the same hardware encoder. So every call immediately kills whatever the last call for this
     serial left running (locally and — see _kill_remote_screenrecord — on the device) before
     touching anything else, and an old call still in its read loop notices it's been superseded
-    the moment its (just-killed) subprocess's pipe hits EOF, and quietly stops instead of retrying."""
+    the moment its (just-killed) subprocess's pipe hits EOF, and quietly stops instead of retrying.
+
+    Screenrecord dying within a couple seconds of starting (no real error, just an empty/short
+    life) used to be treated as a fatal "quick failure" — 3 in a row and this function gave up,
+    closing the connection so the client would flash a red "luồng video đã dừng" toast and
+    reconnect after 2s. Confirmed on-device this also fires whenever something ELSE on the phone
+    (the app under test doing its own camera/video encoding, not necessarily a visible "ad") is
+    holding the one hardware video codec screenrecord needs — a transient, recurring condition,
+    not a real failure, and closing the connection over it meant the toast just kept flashing
+    forever for as long as that contention lasted. So a quick failure alone no longer gives up:
+    only a real disconnect (_device_present false) does — everything else just waits a beat and
+    tries again quietly, same as the screen-locked case, and resumes the instant the codec is
+    free again with no visible error at all."""
     with _active_guard:
         prev = _active.get(serial)
         my_epoch = (prev["epoch"] + 1) if prev else 1
@@ -123,7 +146,7 @@ def stream(serial, write):
                "--size", f"{sw}x{sh}", "--bit-rate", str(BIT_RATE),
                "--time-limit", str(TIME_LIMIT), "-"]
         quick_failures = 0
-        while quick_failures < 3:
+        while True:
             if superseded():
                 return
             if not _screen_awake(serial):
@@ -153,8 +176,20 @@ def stream(serial, write):
                     _kill_remote_screenrecord(serial)  # see docstring — the local kill alone isn't enough
             if superseded():
                 return
-            # Normal end is the 180s cap: loop and restart. A run that dies fast means a real failure.
-            quick_failures = quick_failures + 1 if (not got_data or time.time() - started < 5) else 0
+            # Normal end is the 180s cap: loop and restart right away. A run that died fast is
+            # either the device genuinely gone (give up, let the client's next connect show "no
+            # device") or something transient hogging the codec (wait a beat, keep trying quietly
+            # — see docstring). Either way this alone never ends the connection anymore.
+            elapsed = time.time() - started
+            if got_data and elapsed >= 5:
+                quick_failures = 0
+                continue
+            quick_failures += 1
+            if not _device_present(serial):
+                return
+            if quick_failures % 5 == 0:  # throttled — this can otherwise repeat many times/minute
+                print(f"[mirror] {serial}: screenrecord đang bị giữ codec (thất bại nhanh x{quick_failures}) — vẫn đang chờ")
+            time.sleep(max(0, 1 - elapsed))
     finally:
         with _active_guard:
             if _active.get(serial, {}).get("epoch") == my_epoch:
