@@ -1712,6 +1712,16 @@ async function updAfterRestart(prevCommit) {
   updLabel('Update', false);  // took too long — let the user check the terminal / try again
 }
 
+async function updAfterFullRelaunch() {
+  // The whole app (not just the server) is quitting and reopening itself — THIS window/tab is
+  // about to die along with it, so there's nothing useful to poll for from in here. Only show
+  // a label; if the tab is somehow still alive a while later, the relaunch didn't happen (e.g.
+  // `open` failed) and the button should go back to usable rather than stay stuck forever.
+  updLabel('Đang khởi động lại app...', true);
+  await new Promise(r => setTimeout(r, 8000));
+  updLabel('Update', false);
+}
+
 updEl.btn.addEventListener('click', async () => {
   if (updBusy) return;
   updLabel('Đang kiểm tra...', true);
@@ -1747,16 +1757,7 @@ updEl.btn.addEventListener('click', async () => {
     setTimeout(() => { if (!updBusy) updLabel('Update', false); }, 2000);
     return;
   }
-  if (res.app_changed) {
-    // Lần này đổi cả phần vỏ app (Auto Tracking Test.app) — server đã tự restart, nhưng tiến
-    // trình app đang chạy vẫn là bản cũ đã nạp sẵn vào bộ nhớ từ lúc mở app, ghi đè file trên đĩa
-    // không đổi được nó. Phải Quit hẳn rồi mở lại app mới dùng đúng bản mới.
-    alert('Đã tải xong bản mới.\n\nLần này có sửa cả phần vỏ app — cần Quit app (Cmd+Q) rồi mở lại '
-        + '(double-click "Auto Tracking Test.app") để dùng đúng bản mới. Chỉ lần này cần làm vậy, '
-        + 'các lần cập nhật sau (không đổi phần vỏ) sẽ tự xong mà không cần Quit.');
-    updLabel('Update', false);
-    return;
-  }
+  if (res.full_relaunch) { updAfterFullRelaunch(); return; }
   updAfterRestart(prevCommit);
 });
 

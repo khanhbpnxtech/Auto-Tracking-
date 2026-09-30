@@ -672,16 +672,40 @@ def check_remote_update():
     return {"checked": True, "behind": n, "update_available": n > 0}
 
 
+APP_BUNDLE = BASE_DIR / "Auto Tracking Test.app"
+
+
+def _app_launcher_parent():
+    """None unless THIS process was started by the native "Auto Tracking Test.app" wrapper (our
+    direct parent's own executable is that app's compiled launcher binary) — a plain `python3
+    server.py` run from Terminal (dev, or a colleague without the app) has no app to relaunch."""
+    launcher = APP_BUNDLE / "Contents" / "MacOS" / "launcher"
+    if not launcher.exists():
+        return None
+    try:
+        comm = subprocess.run(["ps", "-p", str(os.getppid()), "-o", "comm="],
+                              capture_output=True, text=True, timeout=5).stdout.strip()
+        return os.getppid() if comm == str(launcher) else None
+    except Exception:
+        return None
+
+
 def _restart_self():
-    """Re-exec this same process from scratch (same argv), now running the just-pulled code.
-    Must close the listening socket first — os.execv keeps file descriptors open across exec, so
-    the freshly re-exec'd server.py would otherwise fail to bind the same port (still held open
-    by this, technically-still-alive-until-exec-completes process). Must also stop the runner
-    (kills its adb logcat/screenrecord children) for the same reason: os.execv doesn't unwind the
-    stack or run any `finally` block, so anything spawned via subprocess.Popen survives the exec
-    as an orphan — confirmed on-device: 45 stray `adb logcat` processes piled up from repeated
-    restarts before this was added, one leaked set per restart, still holding the USB connection
-    open each time long after the server that spawned them was gone."""
+    """Get the just-pulled code running. Must stop the runner (kills its adb logcat/screenrecord
+    children) and close our listening socket *before* either path below, since neither os.execv
+    nor process death unwinds the stack or runs any `finally` block — anything spawned via
+    subprocess.Popen survives as an orphan otherwise, confirmed on-device: 45 stray `adb logcat`
+    processes piled up from repeated restarts before this was added, one leaked set per restart,
+    still holding the USB connection open long after the server that spawned them was gone.
+
+    When running under the native app wrapper, a plain process re-exec isn't enough if the update
+    also touched the compiled wrapper binary itself (Auto Tracking Test.app/Contents/MacOS/launcher)
+    — that's already loaded into the currently-running wrapper's memory, so only a real quit +
+    relaunch of the whole .app picks up the new one. So when we ARE the app's child, always do the
+    full thing (`open -n` a fresh instance, then kill our own parent) rather than special-casing —
+    simpler than asking the user to manually Quit+Reopen only "sometimes", and it's what a
+    colleague expects "Update" to do anyway. Falls back to the old in-place re-exec when there's no
+    app to relaunch (dev running `python3 server.py` by hand)."""
     runner = _runner_ref["runner"]
     if runner is not None:
         try:
@@ -694,6 +718,20 @@ def _restart_self():
             httpd.socket.close()
         except Exception:
             pass
+
+    app_parent_pid = _app_launcher_parent()
+    if app_parent_pid is not None:
+        try:
+            subprocess.Popen(["open", "-n", str(APP_BUNDLE)])
+        except Exception:
+            pass
+        try:
+            os.kill(app_parent_pid, signal.SIGTERM)
+        except Exception:
+            pass
+        time.sleep(0.5)
+        os._exit(0)
+
     os.execv(sys.executable, [sys.executable] + sys.argv)
 
 
@@ -707,20 +745,14 @@ def self_update():
     if info["dirty"]:
         return {"ok": False, "error": "Có thay đổi chưa commit trong thư mục tool — tự update bị chặn để khỏi mất "
                                       "thay đổi đó. Nhờ dev kiểm tra (git status) rồi update tay."}
-    old_commit = info["commit"]
     pull = _git("pull", "--ff-only", timeout=60)
     if pull.returncode != 0:
         return {"ok": False, "error": (pull.stderr or pull.stdout).strip()[-500:] or "git pull lỗi"}
     if "Already up to date" in pull.stdout:
         return {"ok": True, "restarted": False, "message": "Đã ở bản mới nhất."}
-    # Restarting the Python process (os.execv, below) is NOT enough when the update also touched
-    # the native .app wrapper itself (Auto Tracking Test.app/...) — that binary is already loaded
-    # into the currently-running wrapper process's memory, so only fully quitting and reopening
-    # the app picks up the new one. Tell the caller so it can show that instead of just reloading.
-    changed = _git("diff", "--name-only", f"{old_commit}..HEAD")
-    app_changed = any(line.startswith("Auto Tracking Test.app/") for line in changed.stdout.splitlines())
+    full_relaunch = _app_launcher_parent() is not None
     threading.Timer(0.4, _restart_self).start()  # after this HTTP response is safely sent
-    return {"ok": True, "restarted": True, "app_changed": app_changed, "message": pull.stdout.strip()}
+    return {"ok": True, "restarted": True, "full_relaunch": full_relaunch, "message": pull.stdout.strip()}
 
 
 def fetch_spec_from_lark(folder):
