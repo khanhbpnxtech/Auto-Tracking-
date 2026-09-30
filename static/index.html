@@ -1362,12 +1362,17 @@ refreshDevicePicker();
 const avdEl = { box: document.getElementById('avd-box'), select: document.getElementById('avd-select'), btn: document.getElementById('avd-launch-btn') };
 
 async function loadAvds() {
+  if (avdEl.btn.disabled) return;  // mid-launch — don't rebuild the list under the user
   let res;
   try { res = await (await fetch('/api/avds')).json(); } catch (e) { return; }
-  if (!res.ok || !res.avds || !res.avds.length) return;  // no SDK / no AVDs — stay hidden, nothing to offer
+  if (!res.ok || !res.avds || !res.avds.length) { avdEl.box.style.display = 'none'; return; }
+  const current = avdEl.select.value;
   avdEl.select.innerHTML = res.avds.map((name) => `<option value="${name}">${name}</option>`).join('');
+  if (res.avds.includes(current)) avdEl.select.value = current;  // keep the pick across refreshes
   avdEl.box.style.display = 'inline-flex';
 }
+
+setInterval(loadAvds, 5000);  // picks up AVDs created in Android Studio after this page loaded
 
 avdEl.btn.addEventListener('click', async () => {
   avdEl.btn.disabled = true;
