@@ -66,13 +66,24 @@ def _screen_awake(serial):
 
 def _device_present(serial):
     """adb still sees this serial at all — a real disconnect (unplugged, USB flake) vs. the device
-    being there but momentarily unable to record (see `stream`'s quick-failure handling below)."""
+    being there but momentarily unable to record (see `stream`'s quick-failure handling below).
+
+    Only an explicit "not found" from adb counts as confirmed gone. Anything else that goes wrong
+    here (timeout, adb itself briefly unresponsive) is inconclusive, not evidence of a disconnect —
+    confirmed on-device this was the actual bug behind the toast still recurring even with a
+    healthy, connected phone: this same phone's adb server is ALSO being hit hard, back to back,
+    by this same stream()'s own screenrecord spawn/kill cycle, so a `get-state` call landing right
+    in the middle of that had a real chance to time out on its own, and treating that as "gone"
+    made a busy-but-fine adb the same as a real unplug — the exact thing this check exists to tell
+    apart. Defaults to "present" so a flaky check doesn't end the connection by itself."""
     try:
         out = subprocess.run(["adb", "-s", serial, "get-state"],
-                             capture_output=True, text=True, timeout=5).stdout.strip()
-        return out == "device"
+                             capture_output=True, text=True, timeout=5)
+        if out.returncode == 0:
+            return out.stdout.strip() == "device"
+        return "not found" not in (out.stderr or "").lower()
     except Exception:
-        return False
+        return True
 
 
 def _kill_remote_screenrecord(serial):
