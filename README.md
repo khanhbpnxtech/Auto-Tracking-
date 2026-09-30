@@ -7,28 +7,39 @@ chạy ở `http://127.0.0.1:8765`.
 ## 0. Cài đặt (lần đầu trên 1 máy mới)
 
 Mỗi người dùng tool này cần chạy server **trên chính máy của mình** (vì tool cần adb truy cập
-trực tiếp thiết bị cắm vào máy đó):
+trực tiếp thiết bị cắm vào máy đó). `adb` và thư viện Python `openpyxl` đã **đóng gói sẵn** trong
+`Auto Tracking Test.app` (`Contents/Resources/vendor/`) — không cần cài 2 thứ đó nữa, dù chạy
+qua app hay qua Terminal. Chỉ cần:
 
-1. Cài **Python 3** (có sẵn trên macOS; Windows tải tại python.org).
-2. Cài **Android platform-tools** (để có lệnh `adb`) — macOS: `brew install android-platform-tools`;
-   hoặc tải thủ công tại developer.android.com/tools/releases/platform-tools rồi thêm vào PATH.
-   Kiểm tra: `adb version` chạy được là OK.
-3. Cài **ffmpeg** nếu muốn dùng tính năng quay video màn hình máy: `brew install ffmpeg`.
-4. `git clone` repo này (xin link từ người quản lý tool) vào máy, rồi cài thư viện Python:
+1. `git clone` repo này (xin link từ người quản lý tool):
    ```bash
    git clone <link-repo> tracking-auto-test
-   cd tracking-auto-test
-   python3 -m pip install -r requirements.txt
    ```
-5. Cắm điện thoại Android qua USB, bật **Developer Options → USB debugging**, bấm "Allow"
-   khi máy hỏi cấp quyền debug cho máy tính. Kiểm tra: `adb devices` phải thấy máy ở trạng thái
-   `device` (không phải `unauthorized`/`offline`).
+2. Cắm điện thoại Android qua USB, bật **Developer Options → USB debugging**, bấm "Allow"
+   khi máy hỏi cấp quyền debug cho máy tính.
+3. Mở **`Auto Tracking Test.app`** trong thư mục vừa clone (xem phần Desktop App ngay dưới) —
+   xong, không cần cài gì thêm.
+
+Chỉ cần cài tay thêm khi:
+- **Chạy qua Terminal** (`python3 server.py`) thay vì mở app — lúc đó PATH/PYTHONPATH không tự
+  trỏ vào hàng vendor, cần `python3 -m pip install -r requirements.txt` và có `adb` riêng
+  (`brew install android-platform-tools`) như một máy dev bình thường.
+- **Quay video màn hình máy** — cần `ffmpeg` (`brew install ffmpeg`); không đóng gói được vì
+  ffmpeg của Homebrew phụ thuộc ~18 thư viện khác. Thiếu thì mọi thứ khác vẫn chạy bình thường,
+  chỉ riêng bước "sửa file mp4 để Trim được" bị bỏ qua.
 
 ### Desktop App (mở 1 cú nhấp, không cần mở Terminal)
 
 Trong thư mục vừa clone có sẵn **`Auto Tracking Test.app`** — double-click để chạy: tự bật
 server (nếu chưa chạy) rồi mở dashboard trên trình duyệt. Lần đầu chạy trên máy mới, macOS có
 thể hỏi cấp quyền truy cập thư mục (Desktop/Documents...) — bấm **Allow/Cho phép**.
+
+App tự thêm `Contents/Resources/vendor/bin` (adb) và `vendor/python` (openpyxl) vào
+PATH/PYTHONPATH trước khi chạy `server.py` — đã kiểm chứng bằng cách giả lập máy trắng (không
+Homebrew, không pip-install gì) và chạy được bình thường. Muốn cập nhật bản `adb` đóng gói sau
+này (ví dụ khi cần chạy trên chip đời mới hơn): copy đè
+`$(brew --prefix)/bin/adb` vào `Auto Tracking Test.app/Contents/Resources/vendor/bin/adb`, commit,
+push — đồng nghiệp bấm Update là có bản mới. Riêng `openpyxl` hiếm khi cần cập nhật.
 
 > **Lưu ý quan trọng:** nếu clone repo vào **trong `~/Desktop`** hoặc `~/Documents` (macOS coi
 > đây là thư mục "nhạy cảm"), có máy sẽ **im lặng chặn** app đọc file thay vì hỏi quyền (app báo
