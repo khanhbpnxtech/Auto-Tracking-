@@ -174,6 +174,13 @@ def stream(serial, write):
                 proc.wait()
                 if not superseded():
                     _kill_remote_screenrecord(serial)  # see docstring — the local kill alone isn't enough
+                    # SurfaceFlinger owns a limited pool of virtual displays and needs a moment to
+                    # actually release the one this run held before it'll hand out a fresh one —
+                    # confirmed on-device (logcat): respawning immediately after every kill logged
+                    # "[ScreenRecorder] getUniqueId: Invalid operation on virtual display" on the
+                    # very next attempt, which then died in under 2s itself, feeding right back
+                    # into the same kill-respawn cycle with no gap to ever let it recover.
+                    time.sleep(0.5)
             if superseded():
                 return
             # Normal end is the 180s cap: loop and restart right away. A run that died fast is
