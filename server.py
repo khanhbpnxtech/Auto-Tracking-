@@ -480,6 +480,18 @@ class Handler(BaseHTTPRequestHandler):
                     return chunk
                 path = mirror.save_upload(serial, ext, read_chunk)
                 return self._send_json({"ok": True, "path": str(path)})
+            if parsed.path == "/api/mirror/install-app":
+                filename = (parse_qs(parsed.query).get("filename") or [""])[0]
+                remaining = length
+
+                def read_chunk():
+                    nonlocal remaining
+                    if remaining <= 0:
+                        return b""
+                    chunk = self.rfile.read(min(1 << 20, remaining))
+                    remaining -= len(chunk)
+                    return chunk
+                return self._send_json(mirror.install_app(serial, filename, read_chunk))
             body = json.loads(self.rfile.read(length) or b"{}")
             if parsed.path == "/api/mirror/input":
                 mirror.send_input(serial, body)

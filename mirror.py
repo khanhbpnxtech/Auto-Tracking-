@@ -10,6 +10,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 import threading
 import time
 from datetime import datetime
@@ -271,3 +272,59 @@ def save_upload(serial, ext, read_chunk):
         return fixed
     tmp.unlink(missing_ok=True)
     return path  # ffmpeg failed (corrupt input, etc.) — still give back the raw recording rather than nothing
+
+
+# ---- install: kéo/thả file .apk hoặc .aab vào Màn hình máy để cài thẳng lên máy đang cắm ----
+
+INSTALL_EXTS = {"apk", "aab"}
+
+
+def install_app(serial, filename, read_chunk):
+    """.apk cài thẳng qua `adb install`, không cần gì thêm. .aab cần `bundletool` (build ra đúng
+    bộ APK cho máy đang cắm rồi cài) — không có thì báo rõ cách cài (brew install bundletool, tự
+    kéo theo Java), không đụng gì tới các tính năng khác. Luôn trả về dict {ok, kind, output},
+    không raise, vì kết quả (kể cả lỗi từ adb/bundletool) là thứ tester cần đọc trực tiếp."""
+    ext = Path(filename or "").suffix.lower().lstrip(".")
+    if ext not in INSTALL_EXTS:
+        raise ValueError(f"Chỉ nhận file .apk hoặc .aab (không phải '{ext or filename}')")
+    tmp_dir = Path(tempfile.mkdtemp(prefix="tracking-install-"))
+    try:
+        src = tmp_dir / f"app.{ext}"
+        with open(src, "wb") as f:
+            while True:
+                chunk = read_chunk()
+                if not chunk:
+                    break
+                f.write(chunk)
+        if ext == "apk":
+            return _install_apk(serial, src)
+        return _install_aab(serial, src, tmp_dir)
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+def _install_apk(serial, apk_path):
+    done = subprocess.run(["adb", "-s", serial, "install", "-r", "-t", str(apk_path)],
+                          capture_output=True, text=True, timeout=180)
+    out = (done.stdout + done.stderr).strip()
+    return {"ok": done.returncode == 0 and "Success" in out, "kind": "apk", "output": out[-2000:]}
+
+
+def _install_aab(serial, aab_path, tmp_dir):
+    if not shutil.which("bundletool"):
+        return {"ok": False, "kind": "aab",
+                "output": "Chưa cài bundletool trên máy này — cần để cài file .aab "
+                         "(build ra bộ APK đúng cho máy đang cắm rồi mới cài được).\n"
+                         "Cài bằng: brew install bundletool (tự kéo theo Java)."}
+    apks_path = tmp_dir / "app.apks"
+    build = subprocess.run(["bundletool", "build-apks", f"--bundle={aab_path}",
+                            f"--output={apks_path}", "--connected-device",
+                            f"--device-id={serial}", "--overwrite"],
+                           capture_output=True, text=True, timeout=300)
+    if build.returncode != 0:
+        return {"ok": False, "kind": "aab", "output": (build.stdout + build.stderr).strip()[-2000:]}
+    install = subprocess.run(["bundletool", "install-apks", f"--apks={apks_path}",
+                              f"--device-id={serial}"],
+                             capture_output=True, text=True, timeout=180)
+    out = (build.stdout + install.stdout + install.stderr).strip()
+    return {"ok": install.returncode == 0, "kind": "aab", "output": out[-2000:]}

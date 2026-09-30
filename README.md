@@ -284,6 +284,11 @@ Nút **"Màn hình máy"** ở header mở panel bên phải, hiện màn hình 
 - **Tương tác:** click = tap · giữ ≥ 0,45s = long press · kéo = swipe · 3 nút Back / Home / Recents bên dưới và nút Power (góc phải, bật/tắt màn hình — máy có khoá màn hình thì tắt xong phải tự mở khoá trên máy). Con trỏ trên hình máy là mũi tên đỏ viền trắng. Có hiệu ứng chạm/vuốt vẽ trên hình.
 - **Chụp ảnh** (icon máy ảnh): PNG full-res (`adb screencap`) → lưu thẳng **~/Desktop** (`screenshot-<serial>-<ngày-giờ>.png`).
 - **Quay video** (chấm đỏ; bấm lại để dừng): bật *Show taps* trên máy trong lúc quay (chạm vật lý hiện chấm; chạm từ web được vẽ hiệu ứng vào video), xong tự trả setting về giá trị cũ → lưu **~/Desktop** (`record-<serial>-<ngày-giờ>.mp4`). File luôn được đẩy qua `ffmpeg` một lượt trước khi lưu (remux nhanh nếu trình duyệt ghi thẳng mp4, chuyển đổi nếu chỉ ghi được webm) — nếu không, file mp4 do trình duyệt tự ghi hay bị lỗi `moov`/duration khiến QuickTime (và nhiều app khác) mở được nhưng **không Trim được**.
+- **Cài app:** kéo file **.apk** hoặc **.aab** từ Finder thả vào hình máy — tự cài lên máy đang
+  cắm, không cần gõ lệnh. `.apk` cài thẳng qua `adb install -r` (không cần gì thêm). `.aab` cần
+  **bundletool** (build ra đúng bộ APK cho máy đang cắm rồi mới cài được) — cài bằng
+  `brew install bundletool` (tự kéo theo Java); chưa cài thì báo rõ lỗi ngay trên hình, không
+  đụng gì tới các tính năng khác.
 - Cách chạy: `adb screenrecord` (H.264) → HTTP → WebCodecs, nên cần Chrome / Edge / Safari mới. Cứ 180s `screenrecord` tự dừng, server bật lại (đứng hình ~0,3s).
 - Đo thực tế trên AE9260: 40–55 fps khi cuộn/chuyển màn, trễ từ lúc bấm tới khi hình đổi ~0,2s. Màn hình đứng yên thì không có frame (fps = 0) — bình thường.
 - Chỉ nhận request từ `127.0.0.1` / `localhost`, POST cần header `X-Requested-With`. Chưa kiểm tra khi xoay ngang máy.

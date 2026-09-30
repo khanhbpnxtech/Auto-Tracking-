@@ -312,7 +312,14 @@
   body.recording #mirror-rec svg circle { fill: none; }
   body.recording #mirror-rec svg rect { display: block; }
   #mirror-rec svg rect { display: none; fill: var(--unknown); stroke: var(--unknown); }
-  #mirror-stage { flex: 1 1 auto; min-height: 0; position: relative; display: flex; align-items: center; justify-content: center; }
+  #mirror-stage { flex: 1 1 auto; min-height: 0; position: relative; display: flex; align-items: center; justify-content: center; border-radius: 12px; }
+  #mirror-stage.drag-over { outline: 3px dashed var(--accent); outline-offset: -3px; background: rgba(56,189,248,.08); }
+  #mirror-stage.drag-over::after {
+    content: "Thả file .apk / .aab để cài lên máy"; position: absolute; inset: 0; display: flex;
+    align-items: center; justify-content: center; text-align: center; padding: 20px;
+    font-size: 13px; font-weight: 600; color: var(--accent); background: rgba(15,23,42,.75);
+    border-radius: 12px; pointer-events: none;
+  }
   #mirror-screen { display: none; position: relative; }
   #mirror-canvas, #mirror-fx { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 12px; }
   #mirror-canvas { background: #000; border: 1px solid var(--border); }
@@ -1587,6 +1594,41 @@ mEl.shotBtn.addEventListener('click', async () => {
   try { mirrorToast(`Đã lưu: ${(await mirrorPost('/api/mirror/screenshot')).path}`); }
   catch (e) { mirrorToast(`Chụp lỗi: ${e.message}`, true); }
   finally { mEl.shotBtn.disabled = false; }
+});
+
+// ---- install: kéo/thả file .apk hoặc .aab vào màn hình máy để cài thẳng lên máy đang cắm ----
+const INSTALL_EXTS = ['apk', 'aab'];
+const extOf = (name) => (name.split('.').pop() || '').toLowerCase();
+
+['dragenter', 'dragover'].forEach((evt) => mEl.stage.addEventListener(evt, (e) => {
+  if (!mirror.open) return;
+  e.preventDefault();  // bắt buộc phải preventDefault ở dragover thì drop mới bắn ra
+  mEl.stage.classList.add('drag-over');
+}));
+['dragleave', 'dragend'].forEach((evt) => mEl.stage.addEventListener(evt, () => mEl.stage.classList.remove('drag-over')));
+
+mEl.stage.addEventListener('drop', async (e) => {
+  e.preventDefault();
+  mEl.stage.classList.remove('drag-over');
+  const file = e.dataTransfer.files && e.dataTransfer.files[0];
+  if (!file) return;
+  const ext = extOf(file.name);
+  if (!INSTALL_EXTS.includes(ext)) {
+    mirrorToast(`Chỉ nhận file .apk hoặc .aab (không phải .${ext || '?'})`, true);
+    return;
+  }
+  if (!mirror.serial) { mirrorToast('Chưa có máy nào đang kết nối.', true); return; }
+  mirrorToast(`Đang cài ${file.name}${ext === 'aab' ? ' (build .aab có thể mất một lúc)' : ''}...`);
+  try {
+    const res = await fetch(`/api/mirror/install-app?filename=${encodeURIComponent(file.name)}`, {
+      method: 'POST', headers: { 'X-Requested-With': 'tracking-ui' }, body: file,
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok || !j.ok) throw new Error(j.output || j.error || `HTTP ${res.status}`);
+    mirrorToast(`Cài xong: ${file.name}`);
+  } catch (err) {
+    mirrorToast(`Cài lỗi:\n${err.message}`, true);
+  }
 });
 
 // ---- panel open/close/resize + device switching ----
