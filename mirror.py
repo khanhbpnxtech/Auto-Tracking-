@@ -48,6 +48,22 @@ def info(serial):
     return {"serial": serial, "width": w, "height": h, "stream_width": sw, "stream_height": sh}
 
 
+def _screen_awake(serial):
+    """`screenrecord` fails instantly with ERROR: INVALID_LAYER_STACK whenever the device's screen
+    is off/locked — confirmed on-device: exits in well under 5s, which the retry loop below counts
+    as a real failure, so 3 lock-screen attempts in a row (a few hundred ms total) used to give up
+    and close the stream, and the client would spend the whole time the phone stays locked bouncing
+    every 2s between "luồng video đã dừng" and reconnecting, forever. Checked before every spawn so
+    we wait quietly instead. Unknown/unparseable -> assume awake and let screenrecord itself decide."""
+    try:
+        out = subprocess.run(["adb", "-s", serial, "shell", "dumpsys", "power"],
+                             capture_output=True, text=True, timeout=5).stdout
+        m = re.search(r"mWakefulness=(\w+)", out)
+        return m is None or m.group(1) == "Awake"
+    except Exception:
+        return True
+
+
 def _kill_remote_screenrecord(serial):
     """`adb exec-out screenrecord` does NOT reliably kill the actual screenrecord process running
     on the DEVICE when the local adb client is killed/dies — exec-out allocates no pty and doesn't
@@ -110,6 +126,9 @@ def stream(serial, write):
         while quick_failures < 3:
             if superseded():
                 return
+            if not _screen_awake(serial):
+                time.sleep(1)  # locked/off — wait quietly, don't spend it as a quick-failure retry
+                continue
             started = time.time()
             got_data = False
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
