@@ -82,16 +82,20 @@ push — đồng nghiệp bấm Update là có bản mới. Riêng `openpyxl` hi
 
 ### Cập nhật bản mới — nút "Update" trên dashboard
 
-Góc trên bên trái dashboard có ô hiện **version hiện tại** (mã commit git) và nút **Update**:
-bấm vào để kiểm tra bản mới trên GitHub, nếu có sẽ hỏi xác nhận rồi tự `git pull` + khởi động
-lại server (không cần mở Terminal, không cần double-click lại app). Vài lưu ý:
+Góc trên bên trái dashboard có ô hiện **version hiện tại** (vd `v1.1`) và nút **Update**:
+bấm vào để kiểm tra bản mới trên GitHub, nếu có sẽ hỏi xác nhận rồi tự `git pull` + tự Quit/mở
+lại app (không cần mở Terminal, không cần double-click lại app tay). Vài lưu ý:
 
 - Chỉ hoạt động khi thư mục tool là 1 **git clone có remote** — nếu ai đó copy folder tay (không
   qua git clone) sẽ không thấy ô version/nút Update xuất hiện.
 - Nếu bạn có sửa tay code ở máy mình (chưa commit), nút Update sẽ báo lỗi và **không tự ghi đè**
   — tránh mất code đang sửa dở. Muốn update thì `git stash` hoặc commit tạm trước.
-- Đang bấm Update thì dashboard sẽ mất kết nối vài giây (server tự khởi động lại) rồi tự load lại
-  trang — không cần F5 tay.
+- Bấm Update xong app sẽ tự Quit rồi mở lại hẳn (không chỉ reload trang) — luôn vậy dù bản mới
+  chỉ đổi web hay đổi cả vỏ app, để chắc chắn dùng đúng bản mới nhất mọi lúc.
+- **Số version** (`v1.0`, `v1.1`, ...) đọc từ file `VERSION` (1 dòng, tự sửa tay) ở thư mục gốc —
+  chỉ để hiện cho dễ nhìn, còn việc check/tải bản mới vẫn dựa vào git commit thật (hover vào số
+  version để xem đúng commit). Nhớ bump số này lên mỗi khi muốn đồng nghiệp nhận ra "có bản mới
+  thật sự" thay vì chỉ thấy mã commit khó nhớ.
 
 ## 1. Chuẩn bị file spec — tự đồng bộ từ Lark "Tracking Auto"
 

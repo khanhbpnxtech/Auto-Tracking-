@@ -1834,9 +1834,9 @@ async function updLoadVersion() {
   if (!v.is_repo) { updEl.box.style.display = 'none'; return null; }
   updEl.box.style.display = 'inline-flex';
   updCommit = v.commit;
-  updEl.ver.textContent = 'v' + (v.commit || '?') + (v.dirty ? '*' : '');
-  updEl.ver.title = [v.branch && `nhánh ${v.branch}`, v.date, v.dirty ? '(có sửa tay chưa commit)' : '']
-    .filter(Boolean).join(' · ');
+  updEl.ver.textContent = 'v' + (v.version || v.commit || '?') + (v.dirty ? '*' : '');
+  updEl.ver.title = [v.version && `commit ${v.commit}`, v.branch && `nhánh ${v.branch}`, v.date,
+                    v.dirty ? '(có sửa tay chưa commit)' : ''].filter(Boolean).join(' · ');
   return v;
 }
 

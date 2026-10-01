@@ -719,6 +719,16 @@ def _git(*args, timeout=30):
     return subprocess.run(["git", "-C", str(BASE_DIR), *args], capture_output=True, text=True, timeout=timeout)
 
 
+def read_version_file():
+    """Human-friendly version number (1.0, 1.1, ...) — the commit hash is still what self-update
+    actually compares/pulls by, this is purely a nicer label for the UI badge. Bump VERSION by
+    hand (one line, e.g. "1.1") in whatever commit you want people to recognize as a real release."""
+    try:
+        return (BASE_DIR / "VERSION").read_text().strip() or None
+    except FileNotFoundError:
+        return None
+
+
 def git_version_info():
     """Local, offline, always fast — safe to call on every page load."""
     rev = _git("rev-parse", "--short", "HEAD")
@@ -731,6 +741,7 @@ def git_version_info():
     return {
         "is_repo": True,
         "commit": rev.stdout.strip(),
+        "version": read_version_file(),
         "date": date.stdout.strip() or None,
         "branch": branch.stdout.strip() or None,
         "dirty": bool(dirty.stdout.strip()),
