@@ -41,6 +41,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNavigationDe
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
+        setupMainMenu()
         setupWindow()
         ensureServerRunning { [weak self] ok in
             guard let self else { return }
@@ -58,6 +59,38 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNavigationDe
         // Chỉ tắt server nếu CHÍNH lần mở app này là bên khởi động nó — server ai khác đang
         // chạy sẵn (vd. dev chạy tay qua Terminal) thì để yên, không đụng vào.
         serverTask?.terminate()
+    }
+
+    // A bare AppKit app built with `swiftc` (no Storyboard/XIB) starts with NO menu bar at all —
+    // Cmd+C/V/X/A are standard EDIT MENU key equivalents in AppKit, dispatched by the menu item
+    // that owns them, not something a focused view just receives on its own. With no Edit menu,
+    // those shortcuts do nothing at the OS level before the keystroke ever reaches WKWebView, no
+    // matter what's focused inside the page — confirmed this was the actual reason Cmd+V "didn't
+    // work" in Màn hình máy (not a DOM/focus issue on the web side, which was the wrong fix first
+    // tried). The action is left nil-targeted so AppKit forwards it up the normal responder chain;
+    // WKWebView implements cut:/copy:/paste:/selectAll: itself for whatever's focused inside it.
+    func setupMainMenu() {
+        let mainMenu = NSMenu()
+
+        let appMenuItem = NSMenuItem()
+        mainMenu.addItem(appMenuItem)
+        let appMenu = NSMenu()
+        appMenuItem.submenu = appMenu
+        appMenu.addItem(withTitle: "Quit Auto Tracking Test", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+
+        let editMenuItem = NSMenuItem()
+        mainMenu.addItem(editMenuItem)
+        let editMenu = NSMenu(title: "Edit")
+        editMenuItem.submenu = editMenu
+        editMenu.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+        editMenu.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
+        editMenu.addItem(NSMenuItem.separator())
+        editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+
+        NSApp.mainMenu = mainMenu
     }
 
     func setupWindow() {
