@@ -1584,18 +1584,29 @@ mEl.kbdSink.addEventListener('keydown', (e) => {
 // per character like typed keystrokes) so a long paste doesn't turn into hundreds of requests; a
 // line break becomes a separate "enter" key between them since `input text` itself rejects
 // embedded newlines.
-mEl.kbdSink.addEventListener('paste', (e) => {
-  if (!mirror.open) return;
-  e.preventDefault();
-  const text = (e.clipboardData || window.clipboardData).getData('text/plain');
-  setTimeout(() => { mEl.kbdSink.value = ''; }, 0);  // after, in case WebKit still inserts it first
-  if (!text) return;
+function mirrorPasteText(text) {
+  if (!mirror.open || !text) return;
   const lines = text.split(/\r\n|\r|\n/);
   lines.forEach((line, i) => {
     if (line) sendInput({ type: 'text', text: line });
     if (i < lines.length - 1) sendInput({ type: 'key', name: 'enter' });
   });
+}
+
+mEl.kbdSink.addEventListener('paste', (e) => {
+  if (!mirror.open) return;
+  e.preventDefault();
+  const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+  setTimeout(() => { mEl.kbdSink.value = ''; }, 0);  // after, in case WebKit still inserts it first
+  mirrorPasteText(text);
 });
+
+// Bridge for the native app wrapper (native/AutoTrackingApp.swift): Cmd+V's Edit-menu Paste there
+// reads NSPasteboard directly and calls this instead of going through the DOM 'paste' event at
+// all — that event turned out not to fire reliably in the packaged WKWebView regardless of what's
+// focused, so the native side now bypasses the DOM paste path entirely for the shipped app. Kept
+// the listener above too since this same page still runs in a plain browser per the README.
+window.__mirrorPasteFromNative = mirrorPasteText;
 
 mEl.fx.addEventListener('pointerdown', (e) => {
   if (e.button !== 0 || !mirror.info) return;

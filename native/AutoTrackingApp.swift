@@ -94,10 +94,25 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNavigationDe
         editMenu.addItem(NSMenuItem.separator())
         editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
         editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
-        editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        // Paste alone gets a direct target instead of the nil-targeted responder-chain forward the
+        // others use — confirmed that path still wasn't reaching the page even with the Edit menu
+        // in place (adding the menu was necessary but turned out not to be sufficient): WKWebView's
+        // own view hierarchy is who'd actually need to answer `paste:`, and whether that happens
+        // depends on its internal focus/editor-state plumbing recognizing our hidden input as a
+        // genuine editable target, which evidently it does not reliably do here. Going native
+        // instead removes that uncertainty completely: this reads the pasteboard directly and
+        // hands the text to the page over evaluateJavaScript, regardless of DOM focus state.
+        editMenu.addItem(withTitle: "Paste", action: #selector(AppDelegate.handlePasteMenu(_:)), keyEquivalent: "v")
         editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
 
         NSApp.mainMenu = mainMenu
+    }
+
+    @objc func handlePasteMenu(_ sender: Any?) {
+        guard let text = NSPasteboard.general.string(forType: .string),
+              let data = try? JSONEncoder().encode(text),
+              let jsonText = String(data: data, encoding: .utf8) else { return }
+        webView.evaluateJavaScript("window.__mirrorPasteFromNative && window.__mirrorPasteFromNative(\(jsonText))")
     }
 
     func setupWindow() {
