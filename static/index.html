@@ -325,7 +325,10 @@
   body.recording #mirror-rec svg rect { display: block; }
   #mirror-rec svg rect { display: none; fill: var(--unknown); stroke: var(--unknown); }
   #mirror-stage { flex: 1 1 auto; min-height: 0; position: relative; display: flex; align-items: center; justify-content: center; border-radius: 12px; outline: none; }
-  #mirror-stage:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  #mirror-stage:focus-within { outline: 2px solid var(--accent); outline-offset: -2px; }
+  #mirror-kbd-sink {
+    position: absolute; width: 1px; height: 1px; padding: 0; border: none; opacity: 0; pointer-events: none;
+  }
   #mirror-stage.drag-over { outline: 3px dashed var(--accent); outline-offset: -3px; background: rgba(56,189,248,.08); }
   #mirror-stage.drag-over::after {
     content: "Thả file .apk / .aab để cài lên máy"; position: absolute; inset: 0; display: flex;
@@ -401,9 +404,10 @@
       <button id="mirror-close" title="Đóng"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
     </div>
   </div>
-  <div id="mirror-stage" tabindex="0" title="Bấm vào đây rồi gõ bàn phím, hoặc Cmd+V dán chữ đã copy từ ngoài, để nhập vào máy">
+  <div id="mirror-stage">
     <div id="mirror-screen"><canvas id="mirror-canvas"></canvas><canvas id="mirror-fx"></canvas></div>
     <div id="mirror-msg"></div>
+    <input id="mirror-kbd-sink" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
   </div>
   <div class="mirror-nav">
     <button data-key="back" title="Back"><svg viewBox="0 0 24 24"><polygon points="17 4 7 12 17 20"/></svg></button>
@@ -1397,6 +1401,7 @@ const mEl = {
   toggle: document.getElementById('mirror-toggle'), canvas: document.getElementById('mirror-canvas'),
   fx: document.getElementById('mirror-fx'), screen: document.getElementById('mirror-screen'),
   stage: document.getElementById('mirror-stage'), msg: document.getElementById('mirror-msg'),
+  kbdSink: document.getElementById('mirror-kbd-sink'),
   sub: document.getElementById('mirror-sub'), toast: document.getElementById('mirror-toast'),
   recBtn: document.getElementById('mirror-rec'), recTimer: document.getElementById('mirror-rec-timer'),
   shotBtn: document.getElementById('mirror-shot'),
@@ -1552,29 +1557,38 @@ function sendInput(cmd) {
   mirrorPost('/api/mirror/input', cmd).catch((err) => mirrorToast(`Gửi thao tác lỗi: ${err.message}`, true));
 }
 
-// ---- keyboard: bấm vào màn hình máy (tabindex) rồi gõ bàn phím thật — gõ tới đâu gửi tới đó.
+// ---- keyboard: bấm vào màn hình máy rồi gõ bàn phím thật — gõ tới đâu gửi tới đó.
 // `adb shell input text` chỉ nhận ký tự ASCII (qua bảng mã bàn phím US) — gõ tiếng Việt có dấu
 // sẽ không lên được trên máy, đây là giới hạn của adb chứ không phải lỗi ở đây.
+//
+// Nghe trên 1 ô input thật (ẩn, pointer-events:none, luôn rỗng) thay vì thẳng trên div#mirror-stage
+// — đã thử div có tabindex trước, bàn phím vật lý gõ (keydown) vẫn ăn bình thường nhưng Cmd+V dán
+// thì KHÔNG: trong app đóng gói WKWebView, lệnh Paste của hệ thống chỉ được chuyển tới 1 "first
+// responder" có thật là ô nhập liệu (input/textarea/contenteditable) — 1 div thường dù focus được
+// vẫn không được WebKit coi là đích hợp lệ để nhận paste qua con đường hệ thống (khác với
+// Chrome/Safari thường, vốn bắn `paste` trên bất kỳ phần tử đang focus nào). Ô ẩn này là input thật
+// nên Cmd+V hoạt động đúng, còn pointer-events:none để không chặn tap/vuốt trên canvas phía dưới.
 const MIRROR_SPECIAL_KEYS = {
   Enter: 'enter', Backspace: 'backspace', Tab: 'tab', Escape: 'back',
   ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down', Delete: 'delete',
 };
-mEl.stage.addEventListener('keydown', (e) => {
+mEl.kbdSink.addEventListener('keydown', (e) => {
   if (!mirror.open || e.metaKey || e.ctrlKey || e.altKey) return;
   const special = MIRROR_SPECIAL_KEYS[e.key];
   if (special) { e.preventDefault(); sendInput({ type: 'key', name: special }); return; }
   if (e.key.length === 1) { e.preventDefault(); sendInput({ type: 'text', text: e.key }); }
+  mEl.kbdSink.value = '';
 });
 
-// Paste from outside (Cmd+V from Chrome, Notes, anywhere) — the stage isn't an editable element,
-// but WebKit/Chromium still fire `paste` on whatever currently has focus, editable or not, so this
-// needs no contenteditable trick. Sent as whole lines (not one sendInput per character like typed
-// keystrokes) so a long paste doesn't turn into hundreds of requests; a line break becomes a
-// separate "enter" key between them since `input text` itself rejects embedded newlines.
-mEl.stage.addEventListener('paste', (e) => {
+// Paste from outside (Cmd+V from Chrome, Notes, anywhere). Sent as whole lines (not one sendInput
+// per character like typed keystrokes) so a long paste doesn't turn into hundreds of requests; a
+// line break becomes a separate "enter" key between them since `input text` itself rejects
+// embedded newlines.
+mEl.kbdSink.addEventListener('paste', (e) => {
   if (!mirror.open) return;
   e.preventDefault();
   const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+  setTimeout(() => { mEl.kbdSink.value = ''; }, 0);  // after, in case WebKit still inserts it first
   if (!text) return;
   const lines = text.split(/\r\n|\r|\n/);
   lines.forEach((line, i) => {
@@ -1585,6 +1599,7 @@ mEl.stage.addEventListener('paste', (e) => {
 
 mEl.fx.addEventListener('pointerdown', (e) => {
   if (e.button !== 0 || !mirror.info) return;
+  mEl.kbdSink.focus({ preventScroll: true });  // so a tap on the screen is also "click here to type"
   mEl.fx.setPointerCapture(e.pointerId);
   const p = fracOf(e);
   drag = { a: p, b: p, t0: performance.now() };
