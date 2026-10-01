@@ -199,6 +199,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNavigationDe
         completionHandler(alert.runModal() == .alertFirstButtonReturn ? input.stringValue : nil)
     }
 
+    // A link with target="_blank" (the "Tracking Auto (Lark)" link on the Auto Event Tracking
+    // tab, same pattern as window.open()) asks WKWebView to create a whole second web view to
+    // load it into — same class of gap as alert()/confirm() above: WKWebView does nothing with
+    // that request unless a delegate handles it, so the click silently no-ops with no new window,
+    // no error, nothing. This app has no second window to give it anyway (and doesn't want one —
+    // that Lark page belongs in the user's regular browser, with their real Lark login), so hand
+    // the URL to the system default browser instead and tell WebKit no new web view was created.
+    func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
+                for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+        if let url = navigationAction.request.url {
+            NSWorkspace.shared.open(url)
+        }
+        return nil
+    }
+
     // ---- server lifecycle: same logic the old bash launcher had, ported to Process ----
 
     func ensureServerRunning(completion: @escaping (Bool) -> Void) {
