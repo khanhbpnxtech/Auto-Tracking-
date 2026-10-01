@@ -110,14 +110,19 @@ tab nào (Other events / Ads tracking / Auto Event Tracking) cũng ép đồng b
 chờ 60s. File vẫn được lưu ở `~/Documents/tracking-spec/lark-<sheet_id>.xlsx` (tool tự tạo thư
 mục này) — đó chỉ là nơi lưu tạm để `SpecStore` đọc, không phải thứ bạn cần tự tay quản lý nữa.
 
-**Yêu cầu:** máy đã cài và đăng nhập `lark-cli` (`brew install lark-cli` hoặc tương đương, rồi
-`lark-cli auth login`; kiểm tra bằng `lark-cli auth status` hoặc `lark-cli doctor`) với quyền đọc
-sheet đó. Nếu thiếu — server vẫn chạy bình thường, chỉ in 1 dòng cảnh báo `[lark] Không tự đồng
-bộ được...` trong log rồi tự thử lại mỗi 60s, không crash. Trong lúc đó (hoặc trên máy chưa cài
-`lark-cli`), quay lại cách cũ: **Download As → Excel (.xlsx)** từ sheet trên Lark, thả file vào
-`~/Documents/tracking-spec` — tool tự lấy file `.xlsx` mới nhất trong thư mục (không cần đè/đổi
-tên file), và **tự việc tự động đồng bộ Lark ở trên không ảnh hưởng gì đến cách này**, cả hai
-cùng đổ vào chung 1 thư mục.
+**Yêu cầu:** máy đã cài và đăng nhập `lark-cli` — **cài qua npm, không phải Homebrew**
+(`lark-cli` thật ra là gói `@larksuite/cli`):
+```bash
+npm install -g @larksuite/cli   # cần Node.js trước — chưa có thì `brew install node`
+lark-cli auth login
+```
+kiểm tra bằng `lark-cli auth status` hoặc `lark-cli doctor`. Cần quyền đọc sheet đó trên tài
+khoản Lark vừa đăng nhập. Nếu thiếu — server vẫn chạy bình thường, chỉ in 1 dòng cảnh báo
+`[lark] Không tự đồng bộ được...` trong log rồi tự thử lại mỗi 60s, không crash. Trong lúc đó
+(hoặc trên máy chưa cài `lark-cli`), quay lại cách cũ: **Download As → Excel (.xlsx)** từ sheet
+trên Lark, thả file vào `~/Documents/tracking-spec` — tool tự lấy file `.xlsx` mới nhất trong
+thư mục (không cần đè/đổi tên file), và **tự việc tự động đồng bộ Lark ở trên không ảnh hưởng gì
+đến cách này**, cả hai cùng đổ vào chung 1 thư mục.
 
 > Trên máy khác (đồng nghiệp dùng lại tool), mỗi người tự cài + đăng nhập `lark-cli` trên máy họ
 > (không chia sẻ token qua code) — không cần chỉnh `LARK_SPEC_URL` hay đường dẫn tuyệt đối nào,
