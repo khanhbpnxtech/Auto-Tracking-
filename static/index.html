@@ -401,7 +401,7 @@
       <button id="mirror-close" title="Đóng"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
     </div>
   </div>
-  <div id="mirror-stage" tabindex="0" title="Bấm vào đây rồi gõ bàn phím để nhập chữ vào máy">
+  <div id="mirror-stage" tabindex="0" title="Bấm vào đây rồi gõ bàn phím, hoặc Cmd+V dán chữ đã copy từ ngoài, để nhập vào máy">
     <div id="mirror-screen"><canvas id="mirror-canvas"></canvas><canvas id="mirror-fx"></canvas></div>
     <div id="mirror-msg"></div>
   </div>
@@ -1564,6 +1564,23 @@ mEl.stage.addEventListener('keydown', (e) => {
   const special = MIRROR_SPECIAL_KEYS[e.key];
   if (special) { e.preventDefault(); sendInput({ type: 'key', name: special }); return; }
   if (e.key.length === 1) { e.preventDefault(); sendInput({ type: 'text', text: e.key }); }
+});
+
+// Paste from outside (Cmd+V from Chrome, Notes, anywhere) — the stage isn't an editable element,
+// but WebKit/Chromium still fire `paste` on whatever currently has focus, editable or not, so this
+// needs no contenteditable trick. Sent as whole lines (not one sendInput per character like typed
+// keystrokes) so a long paste doesn't turn into hundreds of requests; a line break becomes a
+// separate "enter" key between them since `input text` itself rejects embedded newlines.
+mEl.stage.addEventListener('paste', (e) => {
+  if (!mirror.open) return;
+  e.preventDefault();
+  const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+  if (!text) return;
+  const lines = text.split(/\r\n|\r|\n/);
+  lines.forEach((line, i) => {
+    if (line) sendInput({ type: 'text', text: line });
+    if (i < lines.length - 1) sendInput({ type: 'key', name: 'enter' });
+  });
 });
 
 mEl.fx.addEventListener('pointerdown', (e) => {
