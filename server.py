@@ -736,7 +736,10 @@ def git_version_info():
         return {"is_repo": False}
     date = _git("log", "-1", "--format=%cI")
     branch = _git("rev-parse", "--abbrev-ref", "HEAD")
-    dirty = _git("status", "--porcelain")
+    # Tracked-file edits only: an untracked file someone dropped into the folder (a spec .xlsx,
+    # notes...) can't be lost by `git pull --ff-only` — git refuses by itself if a pulled file
+    # would overwrite it — so it shouldn't block self-update the way a real local edit must.
+    dirty = _git("status", "--porcelain", "--untracked-files=no")
     remote = _git("remote", "get-url", "origin")
     return {
         "is_repo": True,
@@ -836,8 +839,11 @@ def self_update():
     if not info["is_repo"] or not info["has_remote"]:
         return {"ok": False, "error": "Không phải git clone, hoặc chưa có remote 'origin' — không tự update được."}
     if info["dirty"]:
-        return {"ok": False, "error": "Có thay đổi chưa commit trong thư mục tool — tự update bị chặn để khỏi mất "
-                                      "thay đổi đó. Nhờ dev kiểm tra (git status) rồi update tay."}
+        changed = [l for l in _git("status", "--porcelain", "--untracked-files=no").stdout.splitlines() if l]
+        files = "\n".join("  " + line[3:] for line in changed[:10])  # "XY path": status is 2 chars + space
+        return {"ok": False, "error": "Có file trong thư mục tool bị sửa so với bản gốc — tự update bị chặn để "
+                                      f"khỏi mất thay đổi đó:\n{files}\n\nNếu không cố ý sửa, mở Terminal trong "
+                                      "thư mục tool chạy: git checkout -- . rồi bấm Update lại."}
     pull = _git("pull", "--ff-only", timeout=60)
     if pull.returncode != 0:
         return {"ok": False, "error": (pull.stderr or pull.stdout).strip()[-500:] or "git pull lỗi"}
