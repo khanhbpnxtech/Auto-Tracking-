@@ -20,7 +20,9 @@ LONG_EDGE = 1280      # downscale so the longest edge is at most this many px
 BIT_RATE = 8_000_000
 TIME_LIMIT = 180      # screenrecord's hard cap per run; we restart it seamlessly
 SAVE_DIR = Path.home() / "Desktop"
-KEYCODES = {"back": 4, "home": 3, "recents": 187, "power": 26}
+KEYCODES = {"back": 4, "home": 3, "recents": 187, "power": 26,
+            "enter": 66, "backspace": 67, "tab": 61, "delete": 112,
+            "left": 21, "right": 22, "up": 19, "down": 20}
 UPLOAD_EXTS = {"mp4", "webm"}
 
 
@@ -254,8 +256,13 @@ def _shell(serial):
 
 
 def send_input(serial, cmd):
-    """cmd: {"type": "tap", x, y} | {"type": "swipe", x1, y1, x2, y2, ms} | {"type": "key", name}.
-    Every value is coerced to int / looked up in KEYCODES, so nothing user-supplied reaches the shell as text."""
+    """cmd: {"type": "tap", x, y} | {"type": "swipe", x1, y1, x2, y2, ms} | {"type": "key", name}
+    | {"type": "text", text}. tap/swipe/key only ever reach the shell as int()-coerced numbers or
+    a KEYCODES lookup — never raw text. "text" is the one case that does carry a real user string
+    (typed on the physical keyboard while the mirror stage has focus), so it alone needs proper
+    shell-quoting rather than just trusting the input: wrapped in single quotes with embedded
+    quotes escaped, and control characters rejected outright (a literal newline would otherwise
+    close the quote early and let whatever follows run as a second, unintended shell command)."""
     kind = cmd.get("type")
     w, h = screen_size(serial)
     clamp = lambda v, hi: max(0, min(hi - 1, int(v)))
@@ -267,6 +274,11 @@ def send_input(serial, cmd):
                 f"{clamp(cmd['x2'], w)} {clamp(cmd['y2'], h)} {ms}")
     elif kind == "key":
         line = f"input keyevent {KEYCODES[cmd['name']]}"
+    elif kind == "text":
+        text = str(cmd.get("text", ""))
+        if not text or any(ord(c) < 0x20 for c in text):
+            raise ValueError("text rỗng hoặc chứa ký tự điều khiển/xuống dòng")
+        line = "input text '{}'".format(text.replace("'", "'\\''"))
     else:
         raise ValueError("type không hợp lệ")
     _shell(serial).run(line)

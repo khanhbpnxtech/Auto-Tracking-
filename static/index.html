@@ -324,7 +324,8 @@
   body.recording #mirror-rec svg circle { fill: none; }
   body.recording #mirror-rec svg rect { display: block; }
   #mirror-rec svg rect { display: none; fill: var(--unknown); stroke: var(--unknown); }
-  #mirror-stage { flex: 1 1 auto; min-height: 0; position: relative; display: flex; align-items: center; justify-content: center; border-radius: 12px; }
+  #mirror-stage { flex: 1 1 auto; min-height: 0; position: relative; display: flex; align-items: center; justify-content: center; border-radius: 12px; outline: none; }
+  #mirror-stage:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
   #mirror-stage.drag-over { outline: 3px dashed var(--accent); outline-offset: -3px; background: rgba(56,189,248,.08); }
   #mirror-stage.drag-over::after {
     content: "Thả file .apk / .aab để cài lên máy"; position: absolute; inset: 0; display: flex;
@@ -400,7 +401,7 @@
       <button id="mirror-close" title="Đóng"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
     </div>
   </div>
-  <div id="mirror-stage">
+  <div id="mirror-stage" tabindex="0" title="Bấm vào đây rồi gõ bàn phím để nhập chữ vào máy">
     <div id="mirror-screen"><canvas id="mirror-canvas"></canvas><canvas id="mirror-fx"></canvas></div>
     <div id="mirror-msg"></div>
   </div>
@@ -1550,6 +1551,20 @@ function fracOf(e) {
 function sendInput(cmd) {
   mirrorPost('/api/mirror/input', cmd).catch((err) => mirrorToast(`Gửi thao tác lỗi: ${err.message}`, true));
 }
+
+// ---- keyboard: bấm vào màn hình máy (tabindex) rồi gõ bàn phím thật — gõ tới đâu gửi tới đó.
+// `adb shell input text` chỉ nhận ký tự ASCII (qua bảng mã bàn phím US) — gõ tiếng Việt có dấu
+// sẽ không lên được trên máy, đây là giới hạn của adb chứ không phải lỗi ở đây.
+const MIRROR_SPECIAL_KEYS = {
+  Enter: 'enter', Backspace: 'backspace', Tab: 'tab', Escape: 'back',
+  ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down', Delete: 'delete',
+};
+mEl.stage.addEventListener('keydown', (e) => {
+  if (!mirror.open || e.metaKey || e.ctrlKey || e.altKey) return;
+  const special = MIRROR_SPECIAL_KEYS[e.key];
+  if (special) { e.preventDefault(); sendInput({ type: 'key', name: special }); return; }
+  if (e.key.length === 1) { e.preventDefault(); sendInput({ type: 'text', text: e.key }); }
+});
 
 mEl.fx.addEventListener('pointerdown', (e) => {
   if (e.button !== 0 || !mirror.info) return;
