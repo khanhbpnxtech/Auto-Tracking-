@@ -217,11 +217,79 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNavigationDe
     // ---- server lifecycle: same logic the old bash launcher had, ported to Process ----
 
     func ensureServerRunning(completion: @escaping (Bool) -> Void) {
-        if isPortOpen(PORT) {
-            completion(true)  // đã có server chạy sẵn (app mở lần 2, hoặc dev chạy tay) — dùng luôn
-            return
+        guard isPortOpen(PORT) else { startServer(completion: completion); return }
+        // Something already holds the port. Only reuse it if it's this folder's own server running
+        // the code currently on disk — blindly reusing it is how a colleague's forgotten second copy
+        // of the tool (older, in ~/Documents) kept serving the dashboard whichever app they opened.
+        askWhoami { [weak self] ours in
+            guard let self else { return }
+            if ours { completion(true); return }
+            guard let pid = self.pidListeningOnPort(), self.isToolServer(pid: pid) else {
+                self.showFatal("Cổng \(PORT) đang bị 1 chương trình khác (không phải Auto Tracking Test) "
+                             + "chiếm. Tắt chương trình đó rồi mở lại app.")
+                completion(false)
+                return
+            }
+            self.stopServer(pid: pid) { self.startServer(completion: completion) }
         }
+    }
 
+    /// true = the server on the port runs from this app's folder and isn't behind the code on disk.
+    /// Anything else (other folder, stale code, an old server with no /api/whoami) is false.
+    func askWhoami(completion: @escaping (Bool) -> Void) {
+        var request = URLRequest(url: URL(string: "http://127.0.0.1:\(PORT)/api/whoami")!)
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.timeoutInterval = 3
+        let mine = appDir.resolvingSymlinksInPath().path.lowercased()
+        URLSession.shared.dataTask(with: request) { data, _, _ in
+            var ours = false
+            if let data,
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let baseDir = json["base_dir"] as? String {
+                let theirs = URL(fileURLWithPath: baseDir).resolvingSymlinksInPath().path.lowercased()
+                ours = theirs == mine && (json["stale"] as? Bool) == false
+            }
+            DispatchQueue.main.async { completion(ours) }
+        }.resume()
+    }
+
+    func pidListeningOnPort() -> pid_t? {
+        let out = runCapture("/usr/sbin/lsof", ["-tiTCP:\(PORT)", "-sTCP:LISTEN"])
+        return out.split(separator: "\n").first.flatMap { pid_t($0.trimmingCharacters(in: .whitespaces)) }
+    }
+
+    /// Never kill something that isn't this tool's own server.py, whatever else might be on the port.
+    func isToolServer(pid: pid_t) -> Bool {
+        runCapture("/bin/ps", ["-p", "\(pid)", "-o", "command="]).contains("server.py")
+    }
+
+    /// SIGTERM first (server.py turns it into a clean shutdown that also stops its adb children),
+    /// SIGKILL only if the port is still held ~5s later.
+    func stopServer(pid: pid_t, then: @escaping () -> Void) {
+        kill(pid, SIGTERM)
+        func wait(_ attemptsLeft: Int) {
+            if !isPortOpen(PORT) { then(); return }
+            if attemptsLeft == 0 { kill(pid, SIGKILL) }
+            if attemptsLeft < -5 { then(); return }  // give up waiting; startServer reports if bind fails
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { wait(attemptsLeft - 1) }
+        }
+        wait(25)
+    }
+
+    func runCapture(_ path: String, _ args: [String]) -> String {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: path)
+        p.arguments = args
+        let pipe = Pipe()
+        p.standardOutput = pipe
+        p.standardError = FileHandle.nullDevice
+        guard (try? p.run()) != nil else { return "" }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        p.waitUntilExit()
+        return String(data: data, encoding: .utf8) ?? ""
+    }
+
+    func startServer(completion: @escaping (Bool) -> Void) {
         let serverPy = appDir.appendingPathComponent("server.py")
         guard FileManager.default.fileExists(atPath: serverPy.path) else {
             showFatal("Không tìm thấy server.py cạnh app này (đang tìm ở: \(appDir.path)).\n\n"

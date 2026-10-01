@@ -446,6 +446,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json(spec_summary())
         if self.path == "/api/version":
             return self._send_json(git_version_info())
+        if self.path == "/api/whoami":
+            return self._send_json(whoami())
         if self.path == "/api/check-update":
             return self._send_json(check_remote_update())
         if self.path == "/api/device":
@@ -717,6 +719,27 @@ _runner_ref = {"runner": None}
 
 def _git(*args, timeout=30):
     return subprocess.run(["git", "-C", str(BASE_DIR), *args], capture_output=True, text=True, timeout=timeout)
+
+
+def _head_commit():
+    try:
+        rev = _git("rev-parse", "HEAD", timeout=5)
+    except Exception:
+        return None
+    return rev.stdout.strip() if rev.returncode == 0 else None
+
+
+_STARTED_COMMIT = _head_commit()  # code this process actually loaded — compared live in whoami()
+
+
+def whoami():
+    """Lets the native app tell whether the server already holding the port is really ITS server:
+    same folder, and still running the code currently on disk. The app used to reuse whatever
+    answered on the port, which on a colleague's Mac meant a forgotten second copy of the tool
+    (an older unzipped one in ~/Documents) silently served the dashboard — showing its old version
+    and blocking Update — no matter which copy's app they opened. "stale" catches the other half:
+    same folder, but someone ran `git pull` in Terminal while the old server kept running."""
+    return {"base_dir": str(BASE_DIR), "stale": _head_commit() != _STARTED_COMMIT}
 
 
 def read_version_file():

@@ -33,10 +33,19 @@ Chỉ cần cài tay thêm khi:
 Trong thư mục vừa clone có sẵn **`Auto Tracking Test.app`** — double-click để chạy: tự bật
 server (nếu chưa chạy) rồi hiện dashboard trong **1 cửa sổ app thật** (dùng WKWebView của macOS,
 `native/AutoTrackingApp.swift`) — không thanh địa chỉ, không tab, không phải Safari/Chrome. Quit
-app (Cmd+Q hoặc đóng cửa sổ) thì server cũng tự tắt theo (nếu chính app này khởi động nó — server
-ai đang chạy sẵn từ trước, vd. dev chạy tay qua Terminal, thì không bị đụng vào). Lần đầu chạy
-trên máy mới, macOS có thể hỏi cấp quyền truy cập thư mục (Desktop/Documents...) — bấm
-**Allow/Cho phép**.
+app (Cmd+Q hoặc đóng cửa sổ) thì server cũng tự tắt theo (nếu chính app này khởi động nó).
+
+Nếu cổng 8765 đã có server chạy sẵn, app chỉ dùng lại khi đó đúng là server **của chính thư mục
+này và đang chạy đúng code hiện có trên đĩa** (hỏi qua `/api/whoami`). Server của 1 bản tool khác
+trên máy (vd. bản giải nén cũ còn sót trong Documents), hoặc server cùng thư mục nhưng còn chạy code
+cũ sau khi `git pull` tay, sẽ bị tự tắt để app chạy server đúng của mình. Nếu cổng bị 1 chương
+trình không phải tool này chiếm thì app báo lỗi chứ không tự tắt chương trình đó.
+
+Lần đầu chạy trên máy mới, macOS có thể hỏi cấp quyền truy cập thư mục (Desktop/Documents...) —
+bấm **Allow/Cho phép**. Trong lúc hộp thoại này chưa được trả lời, server đứng im (dashboard hiện
+"Đang khởi động server..." mãi) — kiểm tra xem hộp thoại có bị che sau cửa sổ khác không. Tool để
+trong Documents thì hộp thoại này hiện lại mỗi lần app được build lại (chữ ký app đổi), nên clone
+ra ngoài Documents (vd. `~/tracking-auto-test`) sẽ đỡ phiền hơn.
 
 Sửa xong `native/AutoTrackingApp.swift` thì biên dịch lại bằng `native/build.sh` (cần Xcode
 Command Line Tools, có `swiftc` sẵn) rồi commit cả app đã build — đồng nghiệp không cần tự biên
