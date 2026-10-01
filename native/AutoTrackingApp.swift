@@ -46,7 +46,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNavigationDe
         ensureServerRunning { [weak self] ok in
             guard let self else { return }
             if ok {
-                self.webView.load(URLRequest(url: URL(string: "http://127.0.0.1:\(PORT)/")!))
+                // Our own server already sends Cache-Control: no-store on every response, but that
+                // only stops the HTTP cache — macOS can separately restore the WKWebView's actual
+                // rendered session state across a relaunch (window/app state restoration), which
+                // would show old content without ever making a new network request at all.
+                // reloadIgnoringLocalAndRemoteCacheData forces a genuine fresh load every launch.
+                var request = URLRequest(url: URL(string: "http://127.0.0.1:\(PORT)/")!)
+                request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+                self.webView.load(request)
             } else {
                 self.showFatal("Server không khởi động được sau nhiều giây chờ.\n\nXem log: \(LOG_PATH)")
             }
@@ -100,6 +107,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNavigationDe
         window.title = "Auto Tracking Test"
         window.minSize = NSSize(width: 900, height: 560)
         window.center()
+        window.isRestorable = false  // always a genuine fresh load — never macOS's saved-state restore
 
         let config = WKWebViewConfiguration()
         config.preferences.setValue(true, forKey: "developerExtrasEnabled")  // right-click → Inspect Element, hữu ích lúc debug
