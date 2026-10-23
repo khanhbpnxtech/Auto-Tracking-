@@ -945,7 +945,13 @@ def main():
     parser.add_argument("--serial", default=None,
                          help="Ghim vào 1 serial cụ thể (mặc định: tự nhận device đang cắm, "
                               "tự chuyển khi rút/cắm máy khác)")
-    parser.add_argument("--tag", default="TrackingEvent", help="Logcat tag cần lọc (mặc định: TrackingEvent)")
+    # Not every app logs on the same tag: com.daily.horoscope.tarot.reading (2026-10-23) writes
+    # screen_show / button_click on "Tracking" while the ads SDK's iaa_* events stay on
+    # "TrackingEvent" — listening to one tag silently dropped half the journey, even though
+    # Android Studio (no tag filter) showed everything.
+    parser.add_argument("--tag", default="TrackingEvent,Tracking",
+                         help="Logcat tag cần lọc, nhiều tag cách nhau dấu phẩy "
+                              "(mặc định: TrackingEvent,Tracking)")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--no-clear", action="store_true", help="Không clear logcat buffer khi khởi động")
     parser.add_argument("--allow-param", action="append", default=[], metavar="KEY",

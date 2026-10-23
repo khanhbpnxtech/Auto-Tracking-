@@ -159,6 +159,9 @@ class TrackingRunner(threading.Thread):
                  rc_tag="RemoteConfigManager", serial_override=None, clear_first=True, poll_interval=2.0):
         super().__init__(daemon=True)
         self.tag = tag
+        # `tag` may list several comma-separated tags (e.g. "TrackingEvent,Tracking"); all of them
+        # go into the one tracking logcat stream, since logEvent lines parse the same either way.
+        self.tags = [t.strip() for t in tag.split(",") if t.strip()]
         self.rc_tag = rc_tag
         self.on_rc = on_rc or (lambda entry: None)
         self.on_event = on_event
@@ -286,7 +289,7 @@ class TrackingRunner(threading.Thread):
                 self.on_status(f"Không clear được logcat buffer: {e}")
 
         try:
-            proc_track = self._spawn_logcat(serial, [f"{self.tag}:D", "*:S"])
+            proc_track = self._spawn_logcat(serial, [f"{t}:D" for t in self.tags] + ["*:S"])
             proc_error = self._spawn_logcat(serial, ["*:E"])
             proc_rc = self._spawn_logcat(serial, [f"{self.rc_tag}:D", "*:S"])
         except FileNotFoundError:

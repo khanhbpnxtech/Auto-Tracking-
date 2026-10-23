@@ -177,7 +177,7 @@ truyền gì thêm nếu bạn theo đúng bước ở mục 1.
   mất khoảng 1-2 phút. Tool này **không tạo AVD mới được** (chọn system image, RAM, dung lượng...
   là việc của Android Studio, cần tải image nặng vài GB) — mở Android Studio → Device Manager để
   tạo AVD mới, sau đó quay lại đây là thấy ngay trong danh sách.
-- Mặc định lọc log theo tag `TrackingEvent` (đổi bằng `--tag`).
+- Mặc định lọc log theo 2 tag `TrackingEvent` và `Tracking` (đổi bằng `--tag`, nhiều tag cách nhau dấu phẩy).
 - Mở trình duyệt: **http://127.0.0.1:8765** — góc trên phải dashboard luôn hiện tên model +
   serial của device đang tail log realtime (vd: `TECNO KM4 (148427055L008212)`).
 
