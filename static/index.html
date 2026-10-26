@@ -1606,7 +1606,28 @@ mEl.kbdSink.addEventListener('paste', (e) => {
 // all — that event turned out not to fire reliably in the packaged WKWebView regardless of what's
 // focused, so the native side now bypasses the DOM paste path entirely for the shipped app. Kept
 // the listener above too since this same page still runs in a plain browser per the README.
-window.__mirrorPasteFromNative = mirrorPasteText;
+//
+// That native path fires for EVERY Cmd+V in the app, not only on the mirror — so before this check,
+// pasting into the filter / search boxes did nothing at all (mirrorPasteText bails out when the
+// mirror is closed, and the text never reached the focused input). Now a real text field that has
+// focus gets the text itself; only the hidden kbdSink (or nothing editable) forwards to the phone.
+function nativePaste(text) {
+  const el = document.activeElement;
+  const editable = el && el !== mEl.kbdSink && !el.readOnly && !el.disabled &&
+    (el.tagName === 'TEXTAREA' || el.isContentEditable ||
+     (el.tagName === 'INPUT' && !['checkbox', 'radio', 'button', 'submit', 'range', 'color', 'file'].includes(el.type)));
+  if (!editable) { mirrorPasteText(text); return; }
+  // execCommand keeps undo and fires the 'input' event the filters listen to; setRangeText is the
+  // fallback for input types WebKit refuses it on.
+  if (document.execCommand && document.execCommand('insertText', false, text)) return;
+  try {
+    el.setRangeText(text, el.selectionStart, el.selectionEnd, 'end');
+  } catch (_) {
+    el.value += text;
+  }
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+}
+window.__mirrorPasteFromNative = nativePaste;
 
 mEl.fx.addEventListener('pointerdown', (e) => {
   if (e.button !== 0 || !mirror.info) return;
