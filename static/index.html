@@ -349,6 +349,13 @@
   .mirror-nav button { width: 56px; height: 30px; }
   #mirror-toast { display: none; font-size: 11.5px; line-height: 1.45; padding: 7px 10px; border-radius: 6px; background: rgba(34,197,94,.12); color: var(--match); word-break: break-all; }
   #mirror-toast.err { background: rgba(239,68,68,.12); color: var(--unknown); }
+
+  /* Embedded as the "Tracking" area of QC Tools (iframe #embed=qc): QC Tools already shows the
+     tool name, its own Update button and the device picker, so this page drops its duplicates and
+     keeps connection + device on one line. Standalone (the .app) is unchanged. */
+  .embed .update-box { display: none !important; }
+  .embed #status, .embed #device-status { display: inline; margin-top: 0 !important; }
+  .embed #status::after { content: " · "; color: var(--muted); }
 </style>
 </head>
 <body>
@@ -419,6 +426,13 @@
 </aside>
 
 <script>
+const EMBED = location.hash.includes('embed=qc');  // hash, not ?query: server.py routes on the exact path
+if (EMBED) {
+  document.documentElement.classList.add('embed');
+  document.title = 'Tracking Test';
+  document.querySelector('header h1').textContent = 'Tracking Test';
+}
+
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
@@ -1317,7 +1331,7 @@ function renderDevice(info) {
   const state = info.state || 'waiting';
   deviceStatusEl.className = state;
   if (state === 'connected') {
-    deviceStatusEl.textContent = `device: ${deviceLabel(info)} (đang tail log)`;
+    deviceStatusEl.textContent = EMBED ? `device: ${deviceLabel(info)}` : `device: ${deviceLabel(info)} (đang tail log)`;
   } else if (state === 'waiting') {
     deviceStatusEl.textContent = 'device: đang chờ máy cắm vào...';
   } else if (state === 'ambiguous') {
