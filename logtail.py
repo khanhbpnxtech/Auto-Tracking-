@@ -1,3 +1,4 @@
+import json
 import queue
 import re
 import subprocess
@@ -63,6 +64,18 @@ RC_KEY_RE = re.compile(r'^fetchRemoteConfig\s+(?P<type>\w+):\s+(?P<key>[^\s:]+):
 RC_STATUS_RE = re.compile(r'^fetchRemoteConfig:\s*(?P<message>.*)$')
 
 
+def rc_type(logged, value):
+    """Firebase RC has no JSON type: apps read JSON params with getString and log them as `string`
+    (e.g. language_ui_config = {"language_ui_option": "loading", …}). Show those as json."""
+    if logged == "string" and value[:1] in "{[":
+        try:
+            json.loads(value)
+            return "json"
+        except ValueError:
+            pass
+    return logged
+
+
 def parse_rc_line(line):
     h = parse_header(line)
     if not h:
@@ -71,7 +84,8 @@ def parse_rc_line(line):
     base = {"log_time": h["time"], "pid": h["pid"], "tid": h["tid"], "level": h["level"]}
     m = RC_KEY_RE.match(msg)
     if m:
-        return {**base, "kind": "key", "type": m.group("type"), "key": m.group("key"), "value": m.group("value").strip()}
+        value = m.group("value").strip()
+        return {**base, "kind": "key", "type": rc_type(m.group("type"), value), "key": m.group("key"), "value": value}
     m = RC_STATUS_RE.match(msg)
     if m:
         return {**base, "kind": "status", "message": m.group("message").strip()}

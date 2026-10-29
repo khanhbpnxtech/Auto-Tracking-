@@ -1245,7 +1245,7 @@ function createRcPanel(key) {
   });
   $('copyall').addEventListener('click', async (e) => {
     const obj = {};
-    for (const r of visibleRows()) obj[r.key] = r.type === 'boolean' ? r.value === 'true' : (r.type === 'long' || r.type === 'double') && r.value !== '' && !isNaN(r.value) ? Number(r.value) : r.value;
+    for (const r of visibleRows()) obj[r.key] = r.type === 'boolean' ? r.value === 'true' : r.type === 'json' ? JSON.parse(r.value) : (r.type === 'long' || r.type === 'double') && r.value !== '' && !isNaN(r.value) ? Number(r.value) : r.value;
     await copyText(JSON.stringify(obj, null, 2));
     const btn = e.currentTarget; btn.innerHTML = ICON.check; btn.classList.add('ok');
     setTimeout(() => { btn.innerHTML = ICON.copy; btn.classList.remove('ok'); }, 1200);
